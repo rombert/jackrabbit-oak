@@ -10,12 +10,12 @@ public class DocumentKeyImplTest {
     @Test
     public void fromKey() {
         
-        assertThat(DocumentKeyBuilder.fromKey("0:/").getPath(), is("/"));
+        assertThat(DocumentKeyImpl.fromKey("0:/").getPath(), is("/"));
     }
 
     @Test
     public void fromPath() {
         
-        assertThat(DocumentKeyBuilder.fromPath("/").getPath(), is("/"));
+        assertThat(DocumentKeyImpl.fromPath("/").getPath(), is("/"));
     }
 }

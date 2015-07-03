@@ -23,7 +23,7 @@ import aQute.bnd.annotation.ConsumerType;
  * 
  */
 @ConsumerType
-public class MultiplexingDocumentStore implements HierarchicalDocumentStore {
+public class MultiplexingDocumentStore implements DocumentStore {
     
     private final Logger log = LoggerFactory.getLogger(getClass());
     
@@ -34,22 +34,16 @@ public class MultiplexingDocumentStore implements HierarchicalDocumentStore {
     }
     
     @Override
-    public <T extends Document> T findNode(DocumentKey key, int maxCacheAge) {
-        throw new UnsupportedOperationException();
-    }
-    
-    @Override
     public <T extends Document> T find(Collection<T> collection, String key) {
 
         if ( collection == Collection.NODES) {
-            return findNode(DocumentKeyBuilder.fromKey(key));
+            return findNode(DocumentKeyImpl.fromKey(key));
         }
         
         return rootStore().find(collection, key);
     }
     
-    @Override
-    public <T extends Document> T findNode(DocumentKey key) {
+    private <T extends Document> T findNode(DocumentKey key) {
         
         DocumentStore store = findNodeOwnerStore(key);
         
