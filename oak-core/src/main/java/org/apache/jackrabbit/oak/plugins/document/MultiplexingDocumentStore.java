@@ -169,6 +169,12 @@ public class MultiplexingDocumentStore implements HierarchicalDocumentStore {
         // TODO Auto-generated method stub
 
     }
+    
+    @Override
+    public CacheInvalidationStats invalidateCache(Iterable<String> keys) {
+        // TODO Auto-generated method stub
+        return null;
+    }
 
     @Override
     public void dispose() {

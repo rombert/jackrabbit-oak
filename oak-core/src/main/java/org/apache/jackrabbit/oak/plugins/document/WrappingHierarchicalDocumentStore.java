@@ -111,6 +111,12 @@ public class WrappingHierarchicalDocumentStore implements HierarchicalDocumentSt
         // TODO Auto-generated method stub
         return null;
     }
+    
+    @Override
+    public CacheInvalidationStats invalidateCache(Iterable<String> keys) {
+        // TODO Auto-generated method stub
+        return null;
+    }
 
     @Override
     public <T extends Document> void invalidateCache(Collection<T> collection, String key) {
