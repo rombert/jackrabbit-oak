@@ -99,8 +99,45 @@ public class MultiplexingDocumentStore implements DocumentStore {
 
     @Override
     public <T extends Document> List<T> query(Collection<T> collection, String fromKey, String toKey, int limit) {
-        // TODO Auto-generated method stub
-        return null;
+        
+        if ( collection != Collection.NODES ) {
+            return rootStore().query(collection, fromKey, toKey, limit);
+        }
+        
+        DocumentKey from = DocumentKeyImpl.fromKey(fromKey);
+        DocumentKey to = DocumentKeyImpl.fromKey(toKey);
+        
+        DocumentStore owner = findNodeOwnerStore(from);
+        List<T> main = owner.query(collection, fromKey, toKey, limit);
+        // TODO - do we need a query on the contributing stores or is a 'find' enough?
+        for ( DocumentStore contributing : findStoresContainedBetween(from, to)) {
+            // TODO - stop the query if we know that we have enough results, e.g. we
+            // have hit the limit with results between fromKey and contributing.getMountPath()  
+            main.addAll(contributing.query(collection, fromKey, toKey, limit));
+        }
+        
+        // TODO - merge the results instead of full sorting
+        Collections.sort(main, new Comparator<T>() {
+            @Override
+            public int compare(T o1, T o2) {
+                return o1.getId().compareTo(o2.getId());
+            }
+        });
+        
+        return main.size() > limit ? main.subList(0, limit) : main;
+    }
+    
+
+    private List<DocumentStore> findStoresContainedBetween(DocumentKey from, DocumentKey to) {
+        
+        List<DocumentStore> contained = Lists.newArrayList();
+        for ( MountedDocumentStore mountedStore : stores ) {
+            String storePath = mountedStore.getMountPath();
+            if ( from.getPath().compareTo(storePath) < 0 && storePath.compareTo(to.getPath()) > 0 ) {
+                contained.add(mountedStore.getStore());
+            }
+        }
+        return contained;
     }
 
     @Override
