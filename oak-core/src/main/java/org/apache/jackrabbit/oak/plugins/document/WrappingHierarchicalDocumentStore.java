@@ -45,10 +45,10 @@ public class WrappingHierarchicalDocumentStore implements HierarchicalDocumentSt
         if ( collection == Collection.NODES) {
             // caching logic here
             // maybe also splitting logic?
-            return findNode(DocumentKeyBuilder.of(key));
+            return findNode(DocumentKeyBuilder.fromKey(key));
         }
         
-        store.find(collection, key, maxCacheAge);
+        return store.find(collection, key, maxCacheAge);
     }
 
     @Override

@@ -57,5 +57,25 @@ public class MultiplexingDocumentStoreTest {
         
         assertNull(store.find(Collection.NODES, "0:/"));
     }
+    
+    @Test
+    public void findAndListChildren() {
+        
+        DocumentStore root = new MemoryDocumentStore();
+        DocumentStore var = new MemoryDocumentStore();
+        
+        UpdateOp updateOp = new UpdateOp("0:/", true);
+        updateOp.set("prop", "val");
+        root.createOrUpdate(Collection.NODES, updateOp);
+
+        UpdateOp varUpdateOp = new UpdateOp("1:/var", true);
+        varUpdateOp.set("prop", "val");
+        var.createOrUpdate(Collection.NODES, varUpdateOp);
+        
+        MultiplexingDocumentStore store = new MultiplexingDocumentStore.Builder()
+            .root(root)
+            .mount("/var", var)
+            .build();
+    }
 
 }

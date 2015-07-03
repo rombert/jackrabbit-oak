@@ -34,10 +34,15 @@ public class MultiplexingDocumentStore implements HierarchicalDocumentStore {
     }
     
     @Override
+    public <T extends Document> T findNode(DocumentKey key, int maxCacheAge) {
+        throw new UnsupportedOperationException();
+    }
+    
+    @Override
     public <T extends Document> T find(Collection<T> collection, String key) {
 
         if ( collection == Collection.NODES) {
-            return findNode(DocumentKeyBuilder.of(key));
+            return findNode(DocumentKeyBuilder.fromKey(key));
         }
         
         return rootStore().find(collection, key);
