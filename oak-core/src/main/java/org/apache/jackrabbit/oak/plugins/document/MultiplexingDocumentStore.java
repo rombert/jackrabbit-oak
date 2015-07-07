@@ -1,5 +1,7 @@
 package org.apache.jackrabbit.oak.plugins.document;
 
+import static com.google.common.base.Preconditions.checkNotNull;
+
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
@@ -10,8 +12,6 @@ import org.apache.jackrabbit.oak.plugins.document.UpdateOp.Condition;
 import org.apache.jackrabbit.oak.plugins.document.UpdateOp.Key;
 import org.apache.jackrabbit.oak.plugins.document.cache.CacheInvalidationStats;
 import org.apache.jackrabbit.util.Text;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
@@ -26,12 +26,17 @@ import aQute.bnd.annotation.ConsumerType;
 @ConsumerType
 public class MultiplexingDocumentStore implements DocumentStore {
     
-    private final Logger log = LoggerFactory.getLogger(getClass());
+    private final DocumentStore root;
     
     private final List<DocumentStoreMount> mounts;
-    
-    private MultiplexingDocumentStore(List<DocumentStoreMount> mounts) {
-        this.mounts = mounts;
+
+    private MultiplexingDocumentStore(DocumentStore root, List<DocumentStoreMount> mounts) {
+        this.root = root;
+        
+        this.mounts = Lists.newArrayList();
+        this.mounts.add(new DocumentStoreMount(root, "/"));
+        this.mounts.addAll(mounts);
+        
     }
     
     @Override
@@ -41,7 +46,7 @@ public class MultiplexingDocumentStore implements DocumentStore {
             return findNode(DocumentKeyImpl.fromKey(key));
         }
         
-        return rootStore().find(collection, key);
+        return root.find(collection, key);
     }
     
     private <T extends Document> T findNode(DocumentKey key) {
@@ -52,17 +57,6 @@ public class MultiplexingDocumentStore implements DocumentStore {
         return (T) store.find(Collection.NODES, key.getValue());
     }
     
-    private DocumentStore rootStore() {
-        
-        for ( DocumentStoreMount mount : mounts ) {
-            if ( "/".equals(mount.getMountPath())) {
-                return mount.getStore();
-            }
-        }
-        
-        throw new IllegalStateException("No root store configured");
-    }
-
     private DocumentStore findOwnerStore(String key) {
         return findOwnerStore(DocumentKeyImpl.fromKey(key));
     }
@@ -70,6 +64,7 @@ public class MultiplexingDocumentStore implements DocumentStore {
     private DocumentStore findOwnerStore(DocumentKey key) {
         
         String path = key.getPath();
+        
         List<DocumentStoreMount> candidates = Lists.newArrayList();
 
         // pick stores which can contribute
@@ -87,12 +82,8 @@ public class MultiplexingDocumentStore implements DocumentStore {
             }
         });
 
-        DocumentStoreMount bestMatch = candidates.get(0);
-        
-        log.info("For path {} selected store {} mounted at {}", key, 
-                bestMatch.getStore(), bestMatch.getMountPath());
-
-        return bestMatch.getStore();
+        // guaranteed to have at least one candidate since we mount the root store at '/'
+        return candidates.get(0).getStore();
     }
 
     @Override
@@ -105,7 +96,7 @@ public class MultiplexingDocumentStore implements DocumentStore {
             String indexedProperty, long startValue, int limit) {
 
         if ( collection != Collection.NODES ) {
-            return rootStore().query(collection, fromKey, toKey, limit);
+            return root.query(collection, fromKey, toKey, limit);
         }
         
         DocumentKey from = DocumentKeyImpl.fromKey(fromKey);
@@ -156,7 +147,7 @@ public class MultiplexingDocumentStore implements DocumentStore {
     @Override
     public <T extends Document> void remove(Collection<T> collection, List<String> keys) {
         if ( collection != Collection.NODES ) {
-            rootStore().remove(collection, keys);
+            root.remove(collection, keys);
             return;
         }
         
@@ -168,7 +159,7 @@ public class MultiplexingDocumentStore implements DocumentStore {
     @Override
     public <T extends Document> int remove(Collection<T> collection, Map<String, Map<Key, Condition>> toRemove) {
         if ( collection != Collection.NODES) {
-            return rootStore().remove(collection, toRemove);
+            return root.remove(collection, toRemove);
         }
         
         // map each owner to store to the specific removals it will handle
@@ -200,7 +191,7 @@ public class MultiplexingDocumentStore implements DocumentStore {
     @Override
     public <T extends Document> boolean create(Collection<T> collection, List<UpdateOp> updateOps) {
         if ( collection != Collection.NODES) {
-            return rootStore().create(collection, updateOps);
+            return root.create(collection, updateOps);
         }
         
         boolean created = false;
@@ -243,7 +234,7 @@ public class MultiplexingDocumentStore implements DocumentStore {
     public <T extends Document> void invalidateCache(Collection<T> collection, String key) {
         
         if ( collection != Collection.NODES ) {
-            rootStore().invalidateCache();
+            root.invalidateCache();
             return;
         }
         
@@ -290,23 +281,27 @@ public class MultiplexingDocumentStore implements DocumentStore {
     
     public static class Builder {
         
+        private DocumentStore root;
         private List<DocumentStoreMount> mounts = Lists.newArrayList();
-        private boolean hasRoot;
         
         public Builder root(DocumentStore store) {
             
-            mounts.add(new DocumentStoreMount(store, "/"));
-            
-            hasRoot = true;
+            root = checkNotNull(store); 
             
             return this;
         }
         
         public Builder mount(String path, DocumentStore store) {
             
-            // TODO - check path is absolute and maybe delegate to root() is path is '/'
-            // TODO - check for duplicates
-
+            // TODO - check for duplicate mounts?
+            
+            checkNotNull(store);
+            checkNotNull(path);
+            if ( !Text.isDescendant("/", path)) {
+                throw new IllegalArgumentException("Invalid mount path '" + path +"'");
+            }
+            
+            
             mounts.add(new DocumentStoreMount(store, path));
             
             return this;
@@ -314,12 +309,12 @@ public class MultiplexingDocumentStore implements DocumentStore {
         
         public MultiplexingDocumentStore build() {
             
-            Preconditions.checkArgument(hasRoot, "No %s instance mounted at '/'", DocumentStore.class.getSimpleName());
+            Preconditions.checkArgument(root != null, "No %s instance mounted at '/'", DocumentStore.class.getSimpleName());
             
-            Preconditions.checkArgument(mounts.size() > 1, 
-                    "Expected at least 2 %s instances but got %s.", DocumentStore.class.getSimpleName(), mounts.size());
+            Preconditions.checkArgument(mounts.size() > 0, 
+                    "Expected at least 1 mounts but got %s.", mounts.size());
             
-            return new MultiplexingDocumentStore(mounts); 
+            return new MultiplexingDocumentStore(root, mounts); 
         }
     }
     
