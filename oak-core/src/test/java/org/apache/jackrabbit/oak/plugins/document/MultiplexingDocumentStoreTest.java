@@ -45,6 +45,7 @@ public class MultiplexingDocumentStoreTest {
         rootStore = new MemoryDocumentStore();
         subStore = new MemoryDocumentStore();
         
+        writeNode(rootStore, "0:/");
         writeNode(rootStore, "1:/1a");
         writeNode(rootStore, "1:/1b");
         writeNode(subStore, "1:/1c");
@@ -76,11 +77,11 @@ public class MultiplexingDocumentStoreTest {
     public void find_wrongStore() {
         
         // insert a mismatched node in the sub store
-        UpdateOp updateOp = new UpdateOp("0:/", true);
+        UpdateOp updateOp = new UpdateOp("1:/2a", true);
         updateOp.set("prop", "val");
         subStore.createOrUpdate(Collection.NODES, updateOp);
         
-        assertNull(store.find(Collection.NODES, "0:/"));
+        assertNull(store.find(Collection.NODES, "1:/2a"));
     }
     
     @Test
