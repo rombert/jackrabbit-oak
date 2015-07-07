@@ -19,6 +19,7 @@ import org.apache.jackrabbit.oak.plugins.document.UpdateOp.Key;
 import org.apache.jackrabbit.oak.plugins.document.memory.MemoryDocumentStore;
 import org.hamcrest.CoreMatchers;
 import org.hamcrest.Description;
+import org.junit.Before;
 import org.junit.Test;
 import org.junit.internal.matchers.TypeSafeMatcher;
 
@@ -26,86 +27,24 @@ import com.google.common.collect.Maps;
 
 public class MultiplexingDocumentStoreTest {
     
-    @Test
-    public void find_noResults() {
-        
-        DocumentStore root = new MemoryDocumentStore();
-        DocumentStore var = new MemoryDocumentStore();
-        
-        MultiplexingDocumentStore store = new MultiplexingDocumentStore.Builder()
-            .root(root)
-            .mount("/var", var)
-            .build();
-        
-        assertNull(store.find(Collection.NODES, "0:/"));
-    }
-    
-    @Test
-    public void find_matching() {
+    private DocumentStore root;
+    private DocumentStore var;
+    private MultiplexingDocumentStore store;
 
-        DocumentStore root = new MemoryDocumentStore();
-        DocumentStore var = new MemoryDocumentStore();
-        
-        UpdateOp updateOp = new UpdateOp("0:/", true);
-        updateOp.set("prop", "val");
-        root.createOrUpdate(Collection.NODES, updateOp);
-        
-        MultiplexingDocumentStore store = new MultiplexingDocumentStore.Builder()
-            .root(root)
-            .mount("/var", var)
-            .build();
-        
-        assertNotNull(store.find(Collection.NODES, "0:/"));
-    }
-
-    @Test
-    public void find_wrongStore() {
-        
-        DocumentStore root = new MemoryDocumentStore();
-        DocumentStore var = new MemoryDocumentStore();
-        
-        UpdateOp updateOp = new UpdateOp("0:/", true);
-        updateOp.set("prop", "val");
-        var.createOrUpdate(Collection.NODES, updateOp);
-        
-        MultiplexingDocumentStore store = new MultiplexingDocumentStore.Builder()
-                .root(root)
-                .mount("/var", var)
-                .build();
-        
-        assertNull(store.find(Collection.NODES, "0:/"));
-    }
-    
-    @Test
-    public void query_onSingleStore() {
-        
-        DocumentStore root = new MemoryDocumentStore();
-        DocumentStore var = new MemoryDocumentStore();
-        
-        writeNode(root, "/1a");
-        writeNode(root, "/1b");
-        writeNode(root, "/1c");
-        writeNode(root, "/1d");
-        writeNode(root, "/1e");
-        
-        MultiplexingDocumentStore store = new MultiplexingDocumentStore.Builder()
-            .root(root)
-            .mount("/var", var)
-            .build();
-        
-        List<NodeDocument> nodes = store.query(Collection.NODES, 
-                DocumentKeyImpl.fromPath("/1a").getValue(), 
-                DocumentKeyImpl.fromPath("/1e").getValue(), 
-                10);
-        
-        assertThat(nodes, NodeListMatcher.nodeListWithKeys("1:/1b", "1:/1c", "1:/1d"));
-    }
-    
-    @Test
-    public void query_multipleStores() {
-        
-        DocumentStore root = new MemoryDocumentStore();
-        DocumentStore var = new MemoryDocumentStore();
+    /**
+     * Prepares the local repository structure.
+     * 
+     * <p>A sub-repository is mounted at <tt>/1c</tt>, and 
+     * the following nodes are already created: <tt>/1a, /1b, /1c, /1d, /1e</tt>.</p>
+     * 
+     * <p>All the nodes have a property named <em>prop</em> set with 
+     * the value <em>val</em></p>
+     *
+     */
+    @Before
+    public void prepareMultiplexingStore() {
+        root = new MemoryDocumentStore();
+        var = new MemoryDocumentStore();
         
         writeNode(root, "/1a");
         writeNode(root, "/1b");
@@ -113,10 +52,37 @@ public class MultiplexingDocumentStoreTest {
         writeNode(root, "/1d");
         writeNode(root, "/1e");
         
-        MultiplexingDocumentStore store = new MultiplexingDocumentStore.Builder()
+        store = new MultiplexingDocumentStore.Builder()
             .root(root)
             .mount("/1c", var)
             .build();
+    }
+    
+    @Test
+    public void find_noResults() {
+        
+        assertNull(store.find(Collection.NODES, "1:/1z"));
+    }
+    
+    @Test
+    public void find_matching() {
+
+        assertNotNull(store.find(Collection.NODES, "1:/1a"));
+    }
+
+    @Test
+    public void find_wrongStore() {
+        
+        // insert a mismatched node in the sub-mount
+        UpdateOp updateOp = new UpdateOp("0:/", true);
+        updateOp.set("prop", "val");
+        var.createOrUpdate(Collection.NODES, updateOp);
+        
+        assertNull(store.find(Collection.NODES, "0:/"));
+    }
+    
+    @Test
+    public void query_multipleStores() {
         
         List<NodeDocument> nodes = store.query(Collection.NODES, 
                 DocumentKeyImpl.fromPath("/1a").getValue(), 
@@ -129,20 +95,6 @@ public class MultiplexingDocumentStoreTest {
     @Test
     public void query_multipleStores_obeysLimit() {
         
-        DocumentStore root = new MemoryDocumentStore();
-        DocumentStore var = new MemoryDocumentStore();
-        
-        writeNode(root, "/1a");
-        writeNode(root, "/1b");
-        writeNode(var, "/1c");
-        writeNode(root, "/1d");
-        writeNode(root, "/1e");
-        
-        MultiplexingDocumentStore store = new MultiplexingDocumentStore.Builder()
-            .root(root)
-            .mount("/1c", var)
-            .build();
-        
         List<NodeDocument> nodes = store.query(Collection.NODES, 
                 DocumentKeyImpl.fromPath("/1a").getValue(), 
                 DocumentKeyImpl.fromPath("/1e").getValue(), 
@@ -153,20 +105,6 @@ public class MultiplexingDocumentStoreTest {
 
     @Test
     public void query_atRoot() {
-        
-        DocumentStore root = new MemoryDocumentStore();
-        DocumentStore var = new MemoryDocumentStore();
-        
-        writeNode(root, "/1a");
-        writeNode(root, "/1b");
-        writeNode(var, "/1c");
-        writeNode(root, "/1d");
-        writeNode(root, "/1e");
-        
-        MultiplexingDocumentStore store = new MultiplexingDocumentStore.Builder()
-                .root(root)
-                .mount("/1c", var)
-                .build();
         
         List<NodeDocument> nodes = store.query(Collection.NODES, 
                 DocumentKeyImpl.fromPath("/").getValue(), 
@@ -179,20 +117,6 @@ public class MultiplexingDocumentStoreTest {
     @Test
     public void remove_matchingInRootStore() {
         
-        DocumentStore root = new MemoryDocumentStore();
-        DocumentStore var = new MemoryDocumentStore();
-        
-        writeNode(root, "/1a");
-        writeNode(root, "/1b");
-        writeNode(var, "/1c");
-        writeNode(root, "/1d");
-        writeNode(root, "/1e");
-        
-        MultiplexingDocumentStore store = new MultiplexingDocumentStore.Builder()
-                .root(root)
-                .mount("/1c", var)
-                .build();
-        
         store.remove(Collection.NODES, DocumentKeyImpl.fromPath("/1a").getValue());
         
         assertThat(store.find(Collection.NODES, DocumentKeyImpl.fromPath("/1a").getValue()), nullValue());
@@ -200,20 +124,6 @@ public class MultiplexingDocumentStoreTest {
     
     @Test
     public void remove_matchingInOtherStore() {
-        
-        DocumentStore root = new MemoryDocumentStore();
-        DocumentStore var = new MemoryDocumentStore();
-        
-        writeNode(root, "/1a");
-        writeNode(root, "/1b");
-        writeNode(var, "/1c");
-        writeNode(root, "/1d");
-        writeNode(root, "/1e");
-        
-        MultiplexingDocumentStore store = new MultiplexingDocumentStore.Builder()
-                .root(root)
-                .mount("/1c", var)
-                .build();
         
         store.remove(Collection.NODES, DocumentKeyImpl.fromPath("/1c").getValue());
         
@@ -223,39 +133,11 @@ public class MultiplexingDocumentStoreTest {
     @Test
     public void remove_notMatching() {
         
-        DocumentStore root = new MemoryDocumentStore();
-        DocumentStore var = new MemoryDocumentStore();
-        
-        writeNode(root, "/1a");
-        writeNode(root, "/1b");
-        writeNode(var, "/1c");
-        writeNode(root, "/1d");
-        writeNode(root, "/1e");
-        
-        MultiplexingDocumentStore store = new MultiplexingDocumentStore.Builder()
-                .root(root)
-                .mount("/1c", var)
-                .build();
-        
         store.remove(Collection.NODES, DocumentKeyImpl.fromPath("/1z").getValue());
     }
 
     @Test
     public void remove_multipleKeysInMultipleStores() {
-        
-        DocumentStore root = new MemoryDocumentStore();
-        DocumentStore var = new MemoryDocumentStore();
-        
-        writeNode(root, "/1a");
-        writeNode(root, "/1b");
-        writeNode(var, "/1c");
-        writeNode(root, "/1d");
-        writeNode(root, "/1e");
-        
-        MultiplexingDocumentStore store = new MultiplexingDocumentStore.Builder()
-                .root(root)
-                .mount("/1c", var)
-                .build();
         
         store.remove(Collection.NODES, Arrays.asList(
                 DocumentKeyImpl.fromPath("/1b").getValue(),
@@ -269,21 +151,6 @@ public class MultiplexingDocumentStoreTest {
     @Test
     public void remove_withConditions() {
 
-        DocumentStore root = new MemoryDocumentStore();
-        DocumentStore var = new MemoryDocumentStore();
-        
-        writeNode(root, "/1a");
-        writeNode(root, "/1b");
-        writeNode(var, "/1c");
-        writeNode(root, "/1d");
-        writeNode(root, "/1e");
-
-        MultiplexingDocumentStore store = new MultiplexingDocumentStore.Builder()
-                .root(root)
-                .mount("/1c", var)
-                .build();
-        
-        
         UpdateOp.Key prop = new UpdateOp.Key("prop", null);
         UpdateOp.Condition equalsVal = Condition.newEqualsCondition("val");
         UpdateOp.Condition equalsOtherval = Condition.newEqualsCondition("otherVal");
@@ -310,20 +177,6 @@ public class MultiplexingDocumentStoreTest {
     @Test
     public void create() {
         
-        DocumentStore root = new MemoryDocumentStore();
-        DocumentStore var = new MemoryDocumentStore();
-        
-        writeNode(root, "/1a");
-        writeNode(root, "/1b");
-        writeNode(var, "/1c");
-        writeNode(root, "/1d");
-        writeNode(root, "/1e");
-
-        MultiplexingDocumentStore store = new MultiplexingDocumentStore.Builder()
-                .root(root)
-                .mount("/1c", var)
-                .build();
-        
         UpdateOp rootOp = new UpdateOp("1:/1f", true);
         rootOp.set(Document.ID, "1:/1f");
         
@@ -341,21 +194,6 @@ public class MultiplexingDocumentStoreTest {
     @Test
     public void update() {
         
-        DocumentStore root = new MemoryDocumentStore();
-        DocumentStore var = new MemoryDocumentStore();
-        
-        writeNode(root, "/1a");
-        writeNode(root, "/1b");
-        writeNode(var, "/1c");
-        writeNode(root, "/1d");
-        writeNode(root, "/1e");
-        
-        MultiplexingDocumentStore store = new MultiplexingDocumentStore.Builder()
-                .root(root)
-                .mount("/1c", var)
-                .build();
-        
-        
         UpdateOp update = new UpdateOp("", false);
         update.set("prop", "newVal");
         
@@ -368,20 +206,6 @@ public class MultiplexingDocumentStoreTest {
     
     @Test
     public void createOrUpdate() {
-
-        DocumentStore root = new MemoryDocumentStore();
-        DocumentStore var = new MemoryDocumentStore();
-        
-        writeNode(root, "/1a");
-        writeNode(root, "/1b");
-        writeNode(var, "/1c");
-        writeNode(root, "/1d");
-        writeNode(root, "/1e");
-        
-        MultiplexingDocumentStore store = new MultiplexingDocumentStore.Builder()
-                .root(root)
-                .mount("/1c", var)
-                .build();
         
         UpdateOp update = new UpdateOp("1:/1e", false);
         update.set("prop", "newVal");
@@ -400,20 +224,6 @@ public class MultiplexingDocumentStoreTest {
     @Test
     public void findAndUpdate_rootStore() {
         
-        DocumentStore root = new MemoryDocumentStore();
-        DocumentStore var = new MemoryDocumentStore();
-        
-        writeNode(root, "/1a");
-        writeNode(root, "/1b");
-        writeNode(var, "/1c");
-        writeNode(root, "/1d");
-        writeNode(root, "/1e");
-        
-        MultiplexingDocumentStore store = new MultiplexingDocumentStore.Builder()
-                .root(root)
-                .mount("/1c", var)
-                .build();
-        
         UpdateOp rootUpdate = new UpdateOp("1:/1a", false);
         rootUpdate.set("prop", "newVal");
         
@@ -425,20 +235,6 @@ public class MultiplexingDocumentStoreTest {
 
     @Test
     public void findAndUpdate_subStore() {
-        
-        DocumentStore root = new MemoryDocumentStore();
-        DocumentStore var = new MemoryDocumentStore();
-        
-        writeNode(root, "/1a");
-        writeNode(root, "/1b");
-        writeNode(var, "/1c");
-        writeNode(root, "/1d");
-        writeNode(root, "/1e");
-        
-        MultiplexingDocumentStore store = new MultiplexingDocumentStore.Builder()
-                .root(root)
-                .mount("/1c", var)
-                .build();
         
         UpdateOp rootUpdate = new UpdateOp("1:/1c", false);
         rootUpdate.set("prop", "newVal");
