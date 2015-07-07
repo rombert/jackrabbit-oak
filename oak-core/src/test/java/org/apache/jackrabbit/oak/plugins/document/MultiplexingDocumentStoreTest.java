@@ -338,6 +338,34 @@ public class MultiplexingDocumentStoreTest {
         assertNotNull(var.find(Collection.NODES, "2:/1c/a"));
     }
 
+    @Test
+    public void update() {
+        
+        DocumentStore root = new MemoryDocumentStore();
+        DocumentStore var = new MemoryDocumentStore();
+        
+        writeNode(root, "/1a");
+        writeNode(root, "/1b");
+        writeNode(var, "/1c");
+        writeNode(root, "/1d");
+        writeNode(root, "/1e");
+        
+        MultiplexingDocumentStore store = new MultiplexingDocumentStore.Builder()
+                .root(root)
+                .mount("/1c", var)
+                .build();
+        
+        
+        UpdateOp update = new UpdateOp("", false);
+        update.set("prop", "newVal");
+        
+        store.update(Collection.NODES, Arrays.asList("1:/1a", "1:/1c"), update);
+        
+        assertThat(store.find(Collection.NODES, "1:/1a").get("prop"), equalTo((Object) "newVal"));
+        assertThat(store.find(Collection.NODES, "1:/1c").get("prop"), equalTo((Object) "newVal"));
+        
+    }
+
     private void writeNode(DocumentStore root, String path) {
         String id = DocumentKeyImpl.fromPath(path).getValue();
         UpdateOp updateOp = new UpdateOp(id, true);

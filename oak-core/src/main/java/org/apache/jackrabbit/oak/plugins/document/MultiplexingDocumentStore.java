@@ -212,8 +212,9 @@ public class MultiplexingDocumentStore implements DocumentStore {
 
     @Override
     public <T extends Document> void update(Collection<T> collection, List<String> keys, UpdateOp updateOp) {
-        // TODO Auto-generated method stub
-
+        for ( String key : keys) {
+            findNodeOwnerStore(DocumentKeyImpl.fromKey(key)).update(collection, Collections.singletonList(key), updateOp);
+        }
     }
 
     @Override
