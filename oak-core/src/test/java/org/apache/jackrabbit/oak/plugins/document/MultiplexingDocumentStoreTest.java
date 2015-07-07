@@ -27,8 +27,8 @@ import com.google.common.collect.Maps;
 
 public class MultiplexingDocumentStoreTest {
     
-    private DocumentStore root;
-    private DocumentStore var;
+    private DocumentStore rootStore;
+    private DocumentStore subStore;
     private MultiplexingDocumentStore store;
 
     /**
@@ -43,18 +43,18 @@ public class MultiplexingDocumentStoreTest {
      */
     @Before
     public void prepareMultiplexingStore() {
-        root = new MemoryDocumentStore();
-        var = new MemoryDocumentStore();
+        rootStore = new MemoryDocumentStore();
+        subStore = new MemoryDocumentStore();
         
-        writeNode(root, "/1a");
-        writeNode(root, "/1b");
-        writeNode(var, "/1c");
-        writeNode(root, "/1d");
-        writeNode(root, "/1e");
+        writeNode(rootStore, "/1a");
+        writeNode(rootStore, "/1b");
+        writeNode(subStore, "/1c");
+        writeNode(rootStore, "/1d");
+        writeNode(rootStore, "/1e");
         
         store = new MultiplexingDocumentStore.Builder()
-            .root(root)
-            .mount("/1c", var)
+            .root(rootStore)
+            .mount("/1c", subStore)
             .build();
     }
     
@@ -76,7 +76,7 @@ public class MultiplexingDocumentStoreTest {
         // insert a mismatched node in the sub-mount
         UpdateOp updateOp = new UpdateOp("0:/", true);
         updateOp.set("prop", "val");
-        var.createOrUpdate(Collection.NODES, updateOp);
+        subStore.createOrUpdate(Collection.NODES, updateOp);
         
         assertNull(store.find(Collection.NODES, "0:/"));
     }
@@ -187,8 +187,8 @@ public class MultiplexingDocumentStoreTest {
 
         assertTrue(created);
         
-        assertNotNull(root.find(Collection.NODES, "1:/1f"));
-        assertNotNull(var.find(Collection.NODES, "2:/1c/a"));
+        assertNotNull(rootStore.find(Collection.NODES, "1:/1f"));
+        assertNotNull(subStore.find(Collection.NODES, "2:/1c/a"));
     }
 
     @Test
