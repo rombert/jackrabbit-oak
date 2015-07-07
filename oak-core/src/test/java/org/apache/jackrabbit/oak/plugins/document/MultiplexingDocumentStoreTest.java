@@ -105,7 +105,7 @@ public class MultiplexingDocumentStoreTest {
         
         MultiplexingDocumentStore store = new MultiplexingDocumentStore.Builder()
             .root(root)
-            .mount("/1f", var)
+            .mount("/1c", var)
             .build();
         
         List<NodeDocument> nodes = store.query(Collection.NODES, 
@@ -130,7 +130,7 @@ public class MultiplexingDocumentStoreTest {
         
         MultiplexingDocumentStore store = new MultiplexingDocumentStore.Builder()
             .root(root)
-            .mount("/1f", var)
+            .mount("/1c", var)
             .build();
         
         List<NodeDocument> nodes = store.query(Collection.NODES, 

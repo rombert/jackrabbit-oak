@@ -132,7 +132,7 @@ public class MultiplexingDocumentStore implements DocumentStore {
         List<DocumentStore> contained = Lists.newArrayList();
         for ( MountedDocumentStore mountedStore : stores ) {
             String storePath = mountedStore.getMountPath();
-            if ( from.getPath().compareTo(storePath) < 0 && storePath.compareTo(to.getPath()) > 0 ) {
+            if ( from.getPath().compareTo(storePath) < 0 && storePath.compareTo(to.getPath()) < 0 ) {
                 contained.add(mountedStore.getStore());
             }
         }
