@@ -28,10 +28,10 @@ public class MultiplexingDocumentStore implements DocumentStore {
     
     private final Logger log = LoggerFactory.getLogger(getClass());
     
-    private final List<MountedDocumentStore> stores;
+    private final List<DocumentStoreMount> mounts;
     
-    private MultiplexingDocumentStore(List<MountedDocumentStore> stores) {
-        this.stores = stores;
+    private MultiplexingDocumentStore(List<DocumentStoreMount> mounts) {
+        this.mounts = mounts;
     }
     
     @Override
@@ -54,9 +54,9 @@ public class MultiplexingDocumentStore implements DocumentStore {
     
     private DocumentStore rootStore() {
         
-        for ( MountedDocumentStore store : stores ) {
-            if ( "/".equals(store.getMountPath())) {
-                return store.getStore();
+        for ( DocumentStoreMount mount : mounts ) {
+            if ( "/".equals(mount.getMountPath())) {
+                return mount.getStore();
             }
         }
         
@@ -67,24 +67,24 @@ public class MultiplexingDocumentStore implements DocumentStore {
     private DocumentStore findNodeOwnerStore(DocumentKey key) {
         
         String path = key.getPath();
-        List<MountedDocumentStore> candidates = Lists.newArrayList();
+        List<DocumentStoreMount> candidates = Lists.newArrayList();
 
         // pick stores which can contribute
-        for ( MountedDocumentStore store : stores ) {
-            if ( Text.isDescendantOrEqual(store.getMountPath(), path)) {
-                candidates.add(store);
+        for ( DocumentStoreMount mount : mounts ) {
+            if ( Text.isDescendantOrEqual(mount.getMountPath(), path)) {
+                candidates.add(mount);
             }
         }
         
         // sort candidates, longest paths first
-        Collections.sort(candidates, new Comparator<MountedDocumentStore>() {
+        Collections.sort(candidates, new Comparator<DocumentStoreMount>() {
             @Override
-            public int compare(MountedDocumentStore o1, MountedDocumentStore o2) {
+            public int compare(DocumentStoreMount o1, DocumentStoreMount o2) {
                 return o2.getMountPath().length() - o1.getMountPath().length();
             }
         });
 
-        MountedDocumentStore bestMatch = candidates.get(0);
+        DocumentStoreMount bestMatch = candidates.get(0);
         
         log.info("For path {} selected store {} mounted at {}", key, 
                 bestMatch.getStore(), bestMatch.getMountPath());
@@ -131,10 +131,10 @@ public class MultiplexingDocumentStore implements DocumentStore {
     private List<DocumentStore> findStoresContainedBetween(DocumentKey from, DocumentKey to) {
         
         List<DocumentStore> contained = Lists.newArrayList();
-        for ( MountedDocumentStore mountedStore : stores ) {
-            String storePath = mountedStore.getMountPath();
+        for ( DocumentStoreMount mount : mounts ) {
+            String storePath = mount.getMountPath();
             if ( from.getPath().compareTo(storePath) < 0 && storePath.compareTo(to.getPath()) < 0 ) {
-                contained.add(mountedStore.getStore());
+                contained.add(mount.getStore());
             }
         }
         return contained;
@@ -230,8 +230,8 @@ public class MultiplexingDocumentStore implements DocumentStore {
 
     @Override
     public CacheInvalidationStats invalidateCache() {
-        for ( MountedDocumentStore store : stores ) {
-            store.getStore().invalidateCache();
+        for ( DocumentStoreMount mount : mounts ) {
+            mount.getStore().invalidateCache();
         }
         // TODO return aggregate stats
         return null;
@@ -256,8 +256,8 @@ public class MultiplexingDocumentStore implements DocumentStore {
 
     @Override
     public void dispose() {
-        for ( MountedDocumentStore store : stores ) {
-            store.getStore().dispose();
+        for ( DocumentStoreMount mount : mounts ) {
+            mount.getStore().dispose();
         }
     }
 
@@ -269,8 +269,8 @@ public class MultiplexingDocumentStore implements DocumentStore {
 
     @Override
     public void setReadWriteMode(String readWriteMode) {
-        for ( MountedDocumentStore store : stores ) {
-            store.getStore().setReadWriteMode(readWriteMode);
+        for ( DocumentStoreMount mount : mounts ) {
+            mount.getStore().setReadWriteMode(readWriteMode);
         }
     }
 
@@ -288,12 +288,12 @@ public class MultiplexingDocumentStore implements DocumentStore {
     
     public static class Builder {
         
-        private List<MountedDocumentStore> stores = Lists.newArrayList();
+        private List<DocumentStoreMount> mounts = Lists.newArrayList();
         private boolean hasRoot;
         
         public Builder root(DocumentStore store) {
             
-            stores.add(new MountedDocumentStore(store, "/"));
+            mounts.add(new DocumentStoreMount(store, "/"));
             
             hasRoot = true;
             
@@ -305,7 +305,7 @@ public class MultiplexingDocumentStore implements DocumentStore {
             // TODO - check path is absolute and maybe delegate to root() is path is '/'
             // TODO - check for duplicates
 
-            stores.add(new MountedDocumentStore(store, path));
+            mounts.add(new DocumentStoreMount(store, path));
             
             return this;
         }
@@ -314,18 +314,18 @@ public class MultiplexingDocumentStore implements DocumentStore {
             
             Preconditions.checkArgument(hasRoot, "No %s instance mounted at '/'", DocumentStore.class.getSimpleName());
             
-            Preconditions.checkArgument(stores.size() > 1, 
-                    "Expected at least 2 %s instances but got %s.", DocumentStore.class.getSimpleName(), stores.size());
+            Preconditions.checkArgument(mounts.size() > 1, 
+                    "Expected at least 2 %s instances but got %s.", DocumentStore.class.getSimpleName(), mounts.size());
             
-            return new MultiplexingDocumentStore(stores); 
+            return new MultiplexingDocumentStore(mounts); 
         }
     }
     
-    private static class MountedDocumentStore {
+    private static class DocumentStoreMount {
         private final DocumentStore store;
         private final String mountPath;
 
-        public MountedDocumentStore(DocumentStore store, String mountPath) {
+        public DocumentStoreMount(DocumentStore store, String mountPath) {
             this.store = store;
             this.mountPath = mountPath;
         }
