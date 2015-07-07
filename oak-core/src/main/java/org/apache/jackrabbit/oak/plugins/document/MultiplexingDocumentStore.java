@@ -196,8 +196,18 @@ public class MultiplexingDocumentStore implements DocumentStore {
 
     @Override
     public <T extends Document> boolean create(Collection<T> collection, List<UpdateOp> updateOps) {
-        // TODO Auto-generated method stub
-        return false;
+        if ( collection != Collection.NODES) {
+            return rootStore().create(collection, updateOps);
+        }
+        
+        boolean created = false;
+        
+        for ( UpdateOp updateOp: updateOps ) {
+           DocumentKey key = DocumentKeyImpl.fromKey(updateOp.getId());
+           created |= findNodeOwnerStore(key).create(collection, Collections.singletonList(updateOp));
+        }
+        
+        return created;
     }
 
     @Override

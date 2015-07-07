@@ -2,6 +2,7 @@ package org.apache.jackrabbit.oak.plugins.document;
 
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThat;
+import static org.junit.Assert.assertTrue;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -304,6 +305,37 @@ public class MultiplexingDocumentStoreTest {
                 10);
         
         assertThat(nodes, NodeListMatcher.nodeListWithKeys("1:/1d"));
+    }
+    
+    @Test
+    public void create() {
+        
+        DocumentStore root = new MemoryDocumentStore();
+        DocumentStore var = new MemoryDocumentStore();
+        
+        writeNode(root, "/1a");
+        writeNode(root, "/1b");
+        writeNode(var, "/1c");
+        writeNode(root, "/1d");
+        writeNode(root, "/1e");
+
+        MultiplexingDocumentStore store = new MultiplexingDocumentStore.Builder()
+                .root(root)
+                .mount("/1c", var)
+                .build();
+        
+        UpdateOp rootOp = new UpdateOp("1:/1f", true);
+        rootOp.set(Document.ID, "1:/1f");
+        
+        UpdateOp subOp = new UpdateOp("2:/1c/a", true);
+        subOp.set(Document.ID, "2:/1c/a");
+        
+        boolean created = store.create(Collection.NODES, Arrays.asList(rootOp, subOp));
+
+        assertTrue(created);
+        
+        assertNotNull(root.find(Collection.NODES, "1:/1f"));
+        assertNotNull(var.find(Collection.NODES, "2:/1c/a"));
     }
 
     private void writeNode(DocumentStore root, String path) {
