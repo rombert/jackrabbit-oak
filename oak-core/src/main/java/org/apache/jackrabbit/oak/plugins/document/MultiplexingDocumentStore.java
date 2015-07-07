@@ -63,6 +63,9 @@ public class MultiplexingDocumentStore implements DocumentStore {
         throw new IllegalStateException("No root store configured");
     }
 
+    private DocumentStore findOwnerStore(String key) {
+        return findOwnerStore(DocumentKeyImpl.fromKey(key));
+    }
 
     private DocumentStore findOwnerStore(DocumentKey key) {
         
@@ -158,7 +161,7 @@ public class MultiplexingDocumentStore implements DocumentStore {
         }
         
         for ( String key : keys ) {
-            findOwnerStore(DocumentKeyImpl.fromKey(key)).remove(collection, key);
+            findOwnerStore(key).remove(collection, key);
         }
     }
 
@@ -173,7 +176,7 @@ public class MultiplexingDocumentStore implements DocumentStore {
         
         for ( Map.Entry<String, Map<Key, Condition>> entry : toRemove.entrySet()) {
             
-            DocumentStore ownerStore = findOwnerStore(DocumentKeyImpl.fromKey(entry.getKey()));
+            DocumentStore ownerStore = findOwnerStore(entry.getKey());
             
             Map<String, Map<Key, Condition>> removals = storesToRemovals.get(ownerStore);
             if ( removals == null ) {
@@ -203,8 +206,7 @@ public class MultiplexingDocumentStore implements DocumentStore {
         boolean created = false;
         
         for ( UpdateOp updateOp: updateOps ) {
-           DocumentKey key = DocumentKeyImpl.fromKey(updateOp.getId());
-           created |= findOwnerStore(key).create(collection, Collections.singletonList(updateOp));
+           created |= findOwnerStore(updateOp.getId()).create(collection, Collections.singletonList(updateOp));
         }
         
         return created;
@@ -213,19 +215,19 @@ public class MultiplexingDocumentStore implements DocumentStore {
     @Override
     public <T extends Document> void update(Collection<T> collection, List<String> keys, UpdateOp updateOp) {
         for ( String key : keys) {
-            findOwnerStore(DocumentKeyImpl.fromKey(key)).update(collection, Collections.singletonList(key), updateOp);
+            findOwnerStore(key).update(collection, Collections.singletonList(key), updateOp);
         }
     }
 
     @Override
     public <T extends Document> T createOrUpdate(Collection<T> collection, UpdateOp update) {
         
-        return findOwnerStore(DocumentKeyImpl.fromKey(update.getId())).createOrUpdate(collection, update);
+        return findOwnerStore(update.getId()).createOrUpdate(collection, update);
     }
 
     @Override
     public <T extends Document> T findAndUpdate(Collection<T> collection, UpdateOp update) {
-        return findOwnerStore(DocumentKeyImpl.fromKey(update.getId())).findAndUpdate(collection, update);
+        return findOwnerStore(update.getId()).findAndUpdate(collection, update);
     }
 
     @Override
@@ -245,7 +247,7 @@ public class MultiplexingDocumentStore implements DocumentStore {
             return;
         }
         
-        findOwnerStore(DocumentKeyImpl.fromKey(key)).invalidateCache(collection, key);
+        findOwnerStore(key).invalidateCache(collection, key);
     }
     
     @Override
