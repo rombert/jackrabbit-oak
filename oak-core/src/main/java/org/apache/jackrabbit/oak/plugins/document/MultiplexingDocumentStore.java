@@ -22,6 +22,16 @@ import aQute.bnd.annotation.ConsumerType;
 /**
  * The <tt>MultiplexingDocumentStore</tt> wraps two or more <tt>DocumentStore</tt> instances
  * 
+ * <p>Multiplexing is performed only for the {@link Collection#NODES nodes} collection.</p>
+ * 
+ * <p>This document store implementation assumes that the keys for document nodes are of the
+ * <tt>DEPTH:PATH</tt> format and uses that information to decide how to multiplex operations,
+ * i.e. to which store a certain node document belongs.</p>
+ * 
+ * <p>This store contains one root store, which by default holds all the nodes, and at least
+ * one sub-store, which holds all document nodes below certain paths. This concept is similar
+ * to the Unix mounts, where a filesystem can be mounted below a certain point.</p>
+ * 
  */
 @ConsumerType
 public class MultiplexingDocumentStore implements DocumentStore {
@@ -279,6 +289,14 @@ public class MultiplexingDocumentStore implements DocumentStore {
         return null;
     }
     
+    /**
+     * Helper class used to create <tt>MultiplexingDocumentStore</tt> instances
+     * 
+     * <p>It is required to set at least the {@link #root(DocumentStore) root document store} 
+     * and one {@link #mount(String, DocumentStore) mount} before {@link #build() building}
+     * the instance.</p>
+     *
+     */
     public static class Builder {
         
         private DocumentStore root;
@@ -318,6 +336,9 @@ public class MultiplexingDocumentStore implements DocumentStore {
         }
     }
     
+    /**
+     * Private abstraction to simplify storing information about mounts
+     */
     private static class DocumentStoreMount {
         private final DocumentStore store;
         private final String mountPath;
