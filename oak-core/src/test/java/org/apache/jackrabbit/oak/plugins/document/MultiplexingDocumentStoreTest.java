@@ -5,8 +5,10 @@ import static org.junit.Assert.assertThat;
 import static org.junit.Assert.fail;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
+import static org.hamcrest.CoreMatchers.nullValue;
 import static org.junit.Assert.assertNotNull;
 
 import org.apache.jackrabbit.oak.plugins.document.memory.MemoryDocumentStore;
@@ -171,19 +173,91 @@ public class MultiplexingDocumentStoreTest {
     @Test
     public void remove_matchingInRootStore() {
         
-        fail("Not implemented");
+        DocumentStore root = new MemoryDocumentStore();
+        DocumentStore var = new MemoryDocumentStore();
+        
+        writeNode(root, "/1a");
+        writeNode(root, "/1b");
+        writeNode(var, "/1c");
+        writeNode(root, "/1d");
+        writeNode(root, "/1e");
+        
+        MultiplexingDocumentStore store = new MultiplexingDocumentStore.Builder()
+                .root(root)
+                .mount("/1c", var)
+                .build();
+        
+        store.remove(Collection.NODES, DocumentKeyImpl.fromPath("/1a").getValue());
+        
+        assertThat(store.find(Collection.NODES, DocumentKeyImpl.fromPath("/1a").getValue()), nullValue());
     }
     
     @Test
     public void remove_matchingInOtherStore() {
         
-        fail("Not implemented");
+        DocumentStore root = new MemoryDocumentStore();
+        DocumentStore var = new MemoryDocumentStore();
+        
+        writeNode(root, "/1a");
+        writeNode(root, "/1b");
+        writeNode(var, "/1c");
+        writeNode(root, "/1d");
+        writeNode(root, "/1e");
+        
+        MultiplexingDocumentStore store = new MultiplexingDocumentStore.Builder()
+                .root(root)
+                .mount("/1c", var)
+                .build();
+        
+        store.remove(Collection.NODES, DocumentKeyImpl.fromPath("/1c").getValue());
+        
+        assertThat(store.find(Collection.NODES, DocumentKeyImpl.fromPath("/1c").getValue()), nullValue());
     }
 
     @Test
     public void remove_notMatching() {
         
-        fail("Not implemented");
+        DocumentStore root = new MemoryDocumentStore();
+        DocumentStore var = new MemoryDocumentStore();
+        
+        writeNode(root, "/1a");
+        writeNode(root, "/1b");
+        writeNode(var, "/1c");
+        writeNode(root, "/1d");
+        writeNode(root, "/1e");
+        
+        MultiplexingDocumentStore store = new MultiplexingDocumentStore.Builder()
+                .root(root)
+                .mount("/1c", var)
+                .build();
+        
+        store.remove(Collection.NODES, DocumentKeyImpl.fromPath("/1z").getValue());
+    }
+
+    @Test
+    public void remove_multipleKeysInMultipleStores() {
+        
+        DocumentStore root = new MemoryDocumentStore();
+        DocumentStore var = new MemoryDocumentStore();
+        
+        writeNode(root, "/1a");
+        writeNode(root, "/1b");
+        writeNode(var, "/1c");
+        writeNode(root, "/1d");
+        writeNode(root, "/1e");
+        
+        MultiplexingDocumentStore store = new MultiplexingDocumentStore.Builder()
+                .root(root)
+                .mount("/1c", var)
+                .build();
+        
+        store.remove(Collection.NODES, Arrays.asList(
+                DocumentKeyImpl.fromPath("/1b").getValue(),
+                DocumentKeyImpl.fromPath("/1c").getValue(),
+                DocumentKeyImpl.fromPath("/1d").getValue()
+        ));
+        
+        assertThat(store.query(Collection.NODES, DocumentKeyImpl.fromPath("/1a").getValue(), DocumentKeyImpl.fromPath("/1e").getValue(), 10).size(), CoreMatchers.equalTo(0));
     }
 
     private void writeNode(DocumentStore root, String path) {

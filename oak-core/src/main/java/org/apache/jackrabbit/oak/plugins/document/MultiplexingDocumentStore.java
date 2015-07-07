@@ -146,14 +146,19 @@ public class MultiplexingDocumentStore implements DocumentStore {
 
     @Override
     public <T extends Document> void remove(Collection<T> collection, String key) {
-        // TODO Auto-generated method stub
-
+        remove(collection, Collections.singletonList(key));
     }
 
     @Override
     public <T extends Document> void remove(Collection<T> collection, List<String> keys) {
-        // TODO Auto-generated method stub
-
+        if ( collection != Collection.NODES ) {
+            rootStore().remove(collection, keys);
+            return;
+        }
+        
+        for ( String key : keys ) {
+            findNodeOwnerStore(DocumentKeyImpl.fromKey(key)).remove(collection, key);
+        }
     }
 
     @Override
