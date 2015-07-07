@@ -2,21 +2,26 @@ package org.apache.jackrabbit.oak.plugins.document;
 
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThat;
-import static org.junit.Assert.fail;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
+import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.nullValue;
 import static org.junit.Assert.assertNotNull;
 
+import org.apache.jackrabbit.oak.plugins.document.UpdateOp.Condition;
+import org.apache.jackrabbit.oak.plugins.document.UpdateOp.Key;
 import org.apache.jackrabbit.oak.plugins.document.memory.MemoryDocumentStore;
 import org.hamcrest.CoreMatchers;
 import org.hamcrest.Description;
-import org.junit.Assert;
 import org.junit.Test;
 import org.junit.internal.matchers.TypeSafeMatcher;
+
+import com.google.common.collect.Maps;
 
 public class MultiplexingDocumentStoreTest {
     
@@ -258,6 +263,47 @@ public class MultiplexingDocumentStoreTest {
         ));
         
         assertThat(store.query(Collection.NODES, DocumentKeyImpl.fromPath("/1a").getValue(), DocumentKeyImpl.fromPath("/1e").getValue(), 10).size(), CoreMatchers.equalTo(0));
+    }
+    
+    @Test
+    public void remove_withConditions() {
+
+        DocumentStore root = new MemoryDocumentStore();
+        DocumentStore var = new MemoryDocumentStore();
+        
+        writeNode(root, "/1a");
+        writeNode(root, "/1b");
+        writeNode(var, "/1c");
+        writeNode(root, "/1d");
+        writeNode(root, "/1e");
+
+        MultiplexingDocumentStore store = new MultiplexingDocumentStore.Builder()
+                .root(root)
+                .mount("/1c", var)
+                .build();
+        
+        
+        UpdateOp.Key prop = new UpdateOp.Key("prop", null);
+        UpdateOp.Condition equalsVal = Condition.newEqualsCondition("val");
+        UpdateOp.Condition equalsOtherval = Condition.newEqualsCondition("otherVal");
+
+        // /1b with prop = val ( -> REMOVED )
+        // /1c with prop = val ( -> REMOVED )
+        // /1d with prop = otherval ( -> NOT REMOVED )
+
+        Map<String, Map<Key, Condition>> conditionedRemovals = Maps.newHashMap();
+        conditionedRemovals.put(DocumentKeyImpl.fromPath("/1b").getValue(), Collections.singletonMap(prop, equalsVal));
+        conditionedRemovals.put(DocumentKeyImpl.fromPath("/1c").getValue(), Collections.singletonMap(prop, equalsVal));
+        conditionedRemovals.put(DocumentKeyImpl.fromPath("/1d").getValue(), Collections.singletonMap(prop, equalsOtherval));
+        
+        assertThat(store.remove(Collection.NODES, conditionedRemovals), equalTo(2));
+        
+        List<NodeDocument> nodes = store.query(Collection.NODES, 
+                DocumentKeyImpl.fromPath("/1a").getValue(), 
+                DocumentKeyImpl.fromPath("/1e").getValue(), 
+                10);
+        
+        assertThat(nodes, NodeListMatcher.nodeListWithKeys("1:/1d"));
     }
 
     private void writeNode(DocumentStore root, String path) {

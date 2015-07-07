@@ -15,6 +15,7 @@ import org.slf4j.LoggerFactory;
 
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
+import com.google.common.collect.Maps;
 
 import aQute.bnd.annotation.ConsumerType;
 
@@ -163,8 +164,34 @@ public class MultiplexingDocumentStore implements DocumentStore {
 
     @Override
     public <T extends Document> int remove(Collection<T> collection, Map<String, Map<Key, Condition>> toRemove) {
-        // TODO Auto-generated method stub
-        return 0;
+        if ( collection != Collection.NODES) {
+            return rootStore().remove(collection, toRemove);
+        }
+        
+        // map each owner to store to the specific removals it will handle
+        Map<DocumentStore, Map<String, Map<Key, Condition>>> storesToRemovals = Maps.newHashMap();
+        
+        for ( Map.Entry<String, Map<Key, Condition>> entry : toRemove.entrySet()) {
+            
+            DocumentStore ownerStore = findNodeOwnerStore(DocumentKeyImpl.fromKey(entry.getKey()));
+            
+            Map<String, Map<Key, Condition>> removals = storesToRemovals.get(ownerStore);
+            if ( removals == null ) {
+                removals = Maps.newHashMap();
+                storesToRemovals.put(ownerStore, removals);
+            }
+            
+            removals.put(entry.getKey(), entry.getValue());
+        }
+        
+        int removals = 0;
+        
+        // process removals for each store
+        for ( Map.Entry<DocumentStore, Map<String, Map<Key, Condition>>> entry : storesToRemovals.entrySet()  ) {
+           removals += entry.getKey().remove(collection, entry.getValue());
+        }
+        
+        return removals;
     }
 
     @Override
