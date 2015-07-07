@@ -230,26 +230,35 @@ public class MultiplexingDocumentStore implements DocumentStore {
 
     @Override
     public CacheInvalidationStats invalidateCache() {
-        // TODO Auto-generated method stub
+        for ( MountedDocumentStore store : stores ) {
+            store.getStore().invalidateCache();
+        }
+        // TODO return aggregate stats
         return null;
     }
 
     @Override
     public <T extends Document> void invalidateCache(Collection<T> collection, String key) {
-        // TODO Auto-generated method stub
-
+        
+        if ( collection != Collection.NODES ) {
+            rootStore().invalidateCache();
+            return;
+        }
+        
+        findNodeOwnerStore(DocumentKeyImpl.fromKey(key)).invalidateCache(collection, key);
     }
     
     @Override
     public CacheInvalidationStats invalidateCache(Iterable<String> keys) {
-        // TODO Auto-generated method stub
-        return null;
+        // TODO optimize
+        return invalidateCache();
     }
 
     @Override
     public void dispose() {
-        // TODO Auto-generated method stub
-
+        for ( MountedDocumentStore store : stores ) {
+            store.getStore().dispose();
+        }
     }
 
     @Override
@@ -260,19 +269,20 @@ public class MultiplexingDocumentStore implements DocumentStore {
 
     @Override
     public void setReadWriteMode(String readWriteMode) {
-        // TODO Auto-generated method stub
-
+        for ( MountedDocumentStore store : stores ) {
+            store.getStore().setReadWriteMode(readWriteMode);
+        }
     }
 
     @Override
     public CacheStats getCacheStats() {
-        // TODO Auto-generated method stub
+        // TODO return aggregate stats
         return null;
     }
 
     @Override
     public Map<String, String> getMetadata() {
-        // TODO Auto-generated method stub
+        // TODO return aggregate metadata?
         return null;
     }
     

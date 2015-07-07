@@ -448,6 +448,8 @@ public class MultiplexingDocumentStoreTest {
         
         assertThat(store.find(Collection.NODES, "1:/1c").get("prop"), equalTo((Object) "newVal"));
     }
+    
+    // TODO - mock/spy based tests forinvalidateCache, dispose, setReadWriteMode and getIfCached
 
 
     private void writeNode(DocumentStore root, String path) {
