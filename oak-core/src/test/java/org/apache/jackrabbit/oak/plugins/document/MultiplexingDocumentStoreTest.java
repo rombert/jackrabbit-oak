@@ -365,6 +365,38 @@ public class MultiplexingDocumentStoreTest {
         assertThat(store.find(Collection.NODES, "1:/1c").get("prop"), equalTo((Object) "newVal"));
         
     }
+    
+    @Test
+    public void createOrUpdate() {
+
+        DocumentStore root = new MemoryDocumentStore();
+        DocumentStore var = new MemoryDocumentStore();
+        
+        writeNode(root, "/1a");
+        writeNode(root, "/1b");
+        writeNode(var, "/1c");
+        writeNode(root, "/1d");
+        writeNode(root, "/1e");
+        
+        MultiplexingDocumentStore store = new MultiplexingDocumentStore.Builder()
+                .root(root)
+                .mount("/1c", var)
+                .build();
+        
+        UpdateOp update = new UpdateOp("1:/1e", false);
+        update.set("prop", "newVal");
+        
+        UpdateOp create = new UpdateOp("1:/1f", true);
+        create.set(Document.ID, "1:/1f");
+        create.set("prop", "newVal");
+
+        store.createOrUpdate(Collection.NODES, update);
+        assertThat(store.find(Collection.NODES, "1:/1e").get("prop"), equalTo((Object) "newVal"));
+        
+        store.createOrUpdate(Collection.NODES, create);
+        assertThat(store.find(Collection.NODES, "1:/1f").get("prop"), equalTo((Object) "newVal"));
+    }
+
 
     private void writeNode(DocumentStore root, String path) {
         String id = DocumentKeyImpl.fromPath(path).getValue();
