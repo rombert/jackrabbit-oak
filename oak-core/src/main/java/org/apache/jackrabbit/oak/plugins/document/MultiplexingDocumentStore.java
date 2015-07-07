@@ -46,7 +46,7 @@ public class MultiplexingDocumentStore implements DocumentStore {
     
     private <T extends Document> T findNode(DocumentKey key) {
         
-        DocumentStore store = findNodeOwnerStore(key);
+        DocumentStore store = findOwnerStore(key);
         
         // TODO - can we get rid of the cast? perhaps return NodeDocument
         return (T) store.find(Collection.NODES, key.getValue());
@@ -64,7 +64,7 @@ public class MultiplexingDocumentStore implements DocumentStore {
     }
 
 
-    private DocumentStore findNodeOwnerStore(DocumentKey key) {
+    private DocumentStore findOwnerStore(DocumentKey key) {
         
         String path = key.getPath();
         List<DocumentStoreMount> candidates = Lists.newArrayList();
@@ -108,7 +108,7 @@ public class MultiplexingDocumentStore implements DocumentStore {
         DocumentKey from = DocumentKeyImpl.fromKey(fromKey);
         DocumentKey to = DocumentKeyImpl.fromKey(toKey);
         
-        DocumentStore owner = findNodeOwnerStore(from);
+        DocumentStore owner = findOwnerStore(from);
         List<T> main = owner.query(collection, fromKey, toKey, indexedProperty, startValue, limit);
         // TODO - do we need a query on the contributing stores or is a 'find' enough?
         for ( DocumentStore contributing : findStoresContainedBetween(from, to)) {
@@ -158,7 +158,7 @@ public class MultiplexingDocumentStore implements DocumentStore {
         }
         
         for ( String key : keys ) {
-            findNodeOwnerStore(DocumentKeyImpl.fromKey(key)).remove(collection, key);
+            findOwnerStore(DocumentKeyImpl.fromKey(key)).remove(collection, key);
         }
     }
 
@@ -173,7 +173,7 @@ public class MultiplexingDocumentStore implements DocumentStore {
         
         for ( Map.Entry<String, Map<Key, Condition>> entry : toRemove.entrySet()) {
             
-            DocumentStore ownerStore = findNodeOwnerStore(DocumentKeyImpl.fromKey(entry.getKey()));
+            DocumentStore ownerStore = findOwnerStore(DocumentKeyImpl.fromKey(entry.getKey()));
             
             Map<String, Map<Key, Condition>> removals = storesToRemovals.get(ownerStore);
             if ( removals == null ) {
@@ -204,7 +204,7 @@ public class MultiplexingDocumentStore implements DocumentStore {
         
         for ( UpdateOp updateOp: updateOps ) {
            DocumentKey key = DocumentKeyImpl.fromKey(updateOp.getId());
-           created |= findNodeOwnerStore(key).create(collection, Collections.singletonList(updateOp));
+           created |= findOwnerStore(key).create(collection, Collections.singletonList(updateOp));
         }
         
         return created;
@@ -213,19 +213,19 @@ public class MultiplexingDocumentStore implements DocumentStore {
     @Override
     public <T extends Document> void update(Collection<T> collection, List<String> keys, UpdateOp updateOp) {
         for ( String key : keys) {
-            findNodeOwnerStore(DocumentKeyImpl.fromKey(key)).update(collection, Collections.singletonList(key), updateOp);
+            findOwnerStore(DocumentKeyImpl.fromKey(key)).update(collection, Collections.singletonList(key), updateOp);
         }
     }
 
     @Override
     public <T extends Document> T createOrUpdate(Collection<T> collection, UpdateOp update) {
         
-        return findNodeOwnerStore(DocumentKeyImpl.fromKey(update.getId())).createOrUpdate(collection, update);
+        return findOwnerStore(DocumentKeyImpl.fromKey(update.getId())).createOrUpdate(collection, update);
     }
 
     @Override
     public <T extends Document> T findAndUpdate(Collection<T> collection, UpdateOp update) {
-        return findNodeOwnerStore(DocumentKeyImpl.fromKey(update.getId())).findAndUpdate(collection, update);
+        return findOwnerStore(DocumentKeyImpl.fromKey(update.getId())).findAndUpdate(collection, update);
     }
 
     @Override
@@ -245,7 +245,7 @@ public class MultiplexingDocumentStore implements DocumentStore {
             return;
         }
         
-        findNodeOwnerStore(DocumentKeyImpl.fromKey(key)).invalidateCache(collection, key);
+        findOwnerStore(DocumentKeyImpl.fromKey(key)).invalidateCache(collection, key);
     }
     
     @Override
