@@ -73,11 +73,6 @@ public class Document implements CacheValue {
     public String getId() {
         return (String) get(ID);
     }
-    
-    @CheckForNull
-    public DocumentKey getIdAsKey() {
-        return new DocumentKeyImpl(getId()); // TODO don't convert, just keep a DocumentKey
-    }
 
     /**
      * Get the modification count of this document.
