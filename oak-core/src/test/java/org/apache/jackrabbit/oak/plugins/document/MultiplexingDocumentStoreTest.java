@@ -17,7 +17,6 @@ import static org.junit.Assert.assertNotNull;
 import org.apache.jackrabbit.oak.plugins.document.UpdateOp.Condition;
 import org.apache.jackrabbit.oak.plugins.document.UpdateOp.Key;
 import org.apache.jackrabbit.oak.plugins.document.memory.MemoryDocumentStore;
-import org.hamcrest.CoreMatchers;
 import org.hamcrest.Description;
 import org.junit.Before;
 import org.junit.Test;
@@ -46,11 +45,11 @@ public class MultiplexingDocumentStoreTest {
         rootStore = new MemoryDocumentStore();
         subStore = new MemoryDocumentStore();
         
-        writeNode(rootStore, "/1a");
-        writeNode(rootStore, "/1b");
-        writeNode(subStore, "/1c");
-        writeNode(rootStore, "/1d");
-        writeNode(rootStore, "/1e");
+        writeNode(rootStore, "1:/1a");
+        writeNode(rootStore, "1:/1b");
+        writeNode(subStore, "1:/1c");
+        writeNode(rootStore, "1:/1d");
+        writeNode(rootStore, "1:/1e");
         
         store = new MultiplexingDocumentStore.Builder()
             .root(rootStore)
@@ -67,13 +66,16 @@ public class MultiplexingDocumentStoreTest {
     @Test
     public void find_matching() {
 
+        // match for root store
         assertNotNull(store.find(Collection.NODES, "1:/1a"));
+        // match for sub store
+        assertNotNull(store.find(Collection.NODES, "1:/1c"));
     }
 
     @Test
     public void find_wrongStore() {
         
-        // insert a mismatched node in the sub-mount
+        // insert a mismatched node in the sub store
         UpdateOp updateOp = new UpdateOp("0:/", true);
         updateOp.set("prop", "val");
         subStore.createOrUpdate(Collection.NODES, updateOp);
@@ -84,10 +86,7 @@ public class MultiplexingDocumentStoreTest {
     @Test
     public void query_multipleStores() {
         
-        List<NodeDocument> nodes = store.query(Collection.NODES, 
-                DocumentKeyImpl.fromPath("/1a").getValue(), 
-                DocumentKeyImpl.fromPath("/1e").getValue(), 
-                10);
+        List<NodeDocument> nodes = store.query(Collection.NODES, "1:/1a", "1:/1e", 10);
         
         assertThat(nodes, NodeListMatcher.nodeListWithKeys("1:/1b", "1:/1c", "1:/1d"));
     }
@@ -95,10 +94,7 @@ public class MultiplexingDocumentStoreTest {
     @Test
     public void query_multipleStores_obeysLimit() {
         
-        List<NodeDocument> nodes = store.query(Collection.NODES, 
-                DocumentKeyImpl.fromPath("/1a").getValue(), 
-                DocumentKeyImpl.fromPath("/1e").getValue(), 
-                1);
+        List<NodeDocument> nodes = store.query(Collection.NODES, "1:/1a", "1:/1e", 1);
         
         assertThat(nodes, NodeListMatcher.nodeListWithKeys("1:/1b"));
     }
@@ -106,10 +102,7 @@ public class MultiplexingDocumentStoreTest {
     @Test
     public void query_atRoot() {
         
-        List<NodeDocument> nodes = store.query(Collection.NODES, 
-                DocumentKeyImpl.fromPath("/").getValue(), 
-                DocumentKeyImpl.fromPath("/1b").getValue(), 
-                1);
+        List<NodeDocument> nodes = store.query(Collection.NODES, "0:/", "1:/1b", 1);
         
         assertThat(nodes, NodeListMatcher.nodeListWithKeys("1:/1a"));
     }
@@ -117,35 +110,31 @@ public class MultiplexingDocumentStoreTest {
     @Test
     public void remove_matchingInRootStore() {
         
-        store.remove(Collection.NODES, DocumentKeyImpl.fromPath("/1a").getValue());
+        store.remove(Collection.NODES, "1:/1a");
         
-        assertThat(store.find(Collection.NODES, DocumentKeyImpl.fromPath("/1a").getValue()), nullValue());
+        assertThat(store.find(Collection.NODES, "1:/1a"), nullValue());
     }
     
     @Test
     public void remove_matchingInOtherStore() {
         
-        store.remove(Collection.NODES, DocumentKeyImpl.fromPath("/1c").getValue());
+        store.remove(Collection.NODES, "1:/1c");
         
-        assertThat(store.find(Collection.NODES, DocumentKeyImpl.fromPath("/1c").getValue()), nullValue());
+        assertThat(store.find(Collection.NODES, "1:/1c"), nullValue());
     }
 
     @Test
     public void remove_notMatching() {
         
-        store.remove(Collection.NODES, DocumentKeyImpl.fromPath("/1z").getValue());
+        store.remove(Collection.NODES, "1:/1z");
     }
 
     @Test
     public void remove_multipleKeysInMultipleStores() {
         
-        store.remove(Collection.NODES, Arrays.asList(
-                DocumentKeyImpl.fromPath("/1b").getValue(),
-                DocumentKeyImpl.fromPath("/1c").getValue(),
-                DocumentKeyImpl.fromPath("/1d").getValue()
-        ));
+        store.remove(Collection.NODES, Arrays.asList( "1:/1b", "1:/1c", "1:/1d" ));
         
-        assertThat(store.query(Collection.NODES, DocumentKeyImpl.fromPath("/1a").getValue(), DocumentKeyImpl.fromPath("/1e").getValue(), 10).size(), CoreMatchers.equalTo(0));
+        assertThat(store.query(Collection.NODES, "1:/1a", "1:/1e", 10).size(), equalTo(0));
     }
     
     @Test
@@ -160,16 +149,13 @@ public class MultiplexingDocumentStoreTest {
         // /1d with prop = otherval ( -> NOT REMOVED )
 
         Map<String, Map<Key, Condition>> conditionedRemovals = Maps.newHashMap();
-        conditionedRemovals.put(DocumentKeyImpl.fromPath("/1b").getValue(), Collections.singletonMap(prop, equalsVal));
-        conditionedRemovals.put(DocumentKeyImpl.fromPath("/1c").getValue(), Collections.singletonMap(prop, equalsVal));
-        conditionedRemovals.put(DocumentKeyImpl.fromPath("/1d").getValue(), Collections.singletonMap(prop, equalsOtherval));
+        conditionedRemovals.put("1:/1b", Collections.singletonMap(prop, equalsVal));
+        conditionedRemovals.put("1:/1c", Collections.singletonMap(prop, equalsVal));
+        conditionedRemovals.put("1:/1d", Collections.singletonMap(prop, equalsOtherval));
         
         assertThat(store.remove(Collection.NODES, conditionedRemovals), equalTo(2));
         
-        List<NodeDocument> nodes = store.query(Collection.NODES, 
-                DocumentKeyImpl.fromPath("/1a").getValue(), 
-                DocumentKeyImpl.fromPath("/1e").getValue(), 
-                10);
+        List<NodeDocument> nodes = store.query(Collection.NODES, "1:/1a", "1:/1e", 10);
         
         assertThat(nodes, NodeListMatcher.nodeListWithKeys("1:/1d"));
     }
@@ -248,8 +234,7 @@ public class MultiplexingDocumentStoreTest {
     // TODO - mock/spy based tests forinvalidateCache, dispose, setReadWriteMode and getIfCached
 
 
-    private void writeNode(DocumentStore root, String path) {
-        String id = DocumentKeyImpl.fromPath(path).getValue();
+    private void writeNode(DocumentStore root, String id) {
         UpdateOp updateOp = new UpdateOp(id, true);
         updateOp.set(Document.ID, id);
         updateOp.set("prop", "val");
