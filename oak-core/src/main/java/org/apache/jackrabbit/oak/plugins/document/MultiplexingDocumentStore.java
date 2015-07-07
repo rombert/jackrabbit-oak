@@ -225,8 +225,7 @@ public class MultiplexingDocumentStore implements DocumentStore {
 
     @Override
     public <T extends Document> T findAndUpdate(Collection<T> collection, UpdateOp update) {
-        // TODO Auto-generated method stub
-        return null;
+        return findNodeOwnerStore(DocumentKeyImpl.fromKey(update.getId())).findAndUpdate(collection, update);
     }
 
     @Override

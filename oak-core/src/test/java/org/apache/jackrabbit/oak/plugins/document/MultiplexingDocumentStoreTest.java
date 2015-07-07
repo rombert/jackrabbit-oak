@@ -396,6 +396,58 @@ public class MultiplexingDocumentStoreTest {
         store.createOrUpdate(Collection.NODES, create);
         assertThat(store.find(Collection.NODES, "1:/1f").get("prop"), equalTo((Object) "newVal"));
     }
+    
+    @Test
+    public void findAndUpdate_rootStore() {
+        
+        DocumentStore root = new MemoryDocumentStore();
+        DocumentStore var = new MemoryDocumentStore();
+        
+        writeNode(root, "/1a");
+        writeNode(root, "/1b");
+        writeNode(var, "/1c");
+        writeNode(root, "/1d");
+        writeNode(root, "/1e");
+        
+        MultiplexingDocumentStore store = new MultiplexingDocumentStore.Builder()
+                .root(root)
+                .mount("/1c", var)
+                .build();
+        
+        UpdateOp rootUpdate = new UpdateOp("1:/1a", false);
+        rootUpdate.set("prop", "newVal");
+        
+        NodeDocument old = store.findAndUpdate(Collection.NODES, rootUpdate);
+        assertThat(old.get("prop"), equalTo((Object) "val"));
+        
+        assertThat(store.find(Collection.NODES, "1:/1a").get("prop"), equalTo((Object) "newVal"));
+    }
+
+    @Test
+    public void findAndUpdate_subStore() {
+        
+        DocumentStore root = new MemoryDocumentStore();
+        DocumentStore var = new MemoryDocumentStore();
+        
+        writeNode(root, "/1a");
+        writeNode(root, "/1b");
+        writeNode(var, "/1c");
+        writeNode(root, "/1d");
+        writeNode(root, "/1e");
+        
+        MultiplexingDocumentStore store = new MultiplexingDocumentStore.Builder()
+                .root(root)
+                .mount("/1c", var)
+                .build();
+        
+        UpdateOp rootUpdate = new UpdateOp("1:/1c", false);
+        rootUpdate.set("prop", "newVal");
+        
+        NodeDocument old = store.findAndUpdate(Collection.NODES, rootUpdate);
+        assertThat(old.get("prop"), equalTo((Object) "val"));
+        
+        assertThat(store.find(Collection.NODES, "1:/1c").get("prop"), equalTo((Object) "newVal"));
+    }
 
 
     private void writeNode(DocumentStore root, String path) {
