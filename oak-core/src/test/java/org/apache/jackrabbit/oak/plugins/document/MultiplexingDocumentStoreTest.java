@@ -2,6 +2,7 @@ package org.apache.jackrabbit.oak.plugins.document;
 
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThat;
+import static org.junit.Assert.fail;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -11,6 +12,7 @@ import static org.junit.Assert.assertNotNull;
 import org.apache.jackrabbit.oak.plugins.document.memory.MemoryDocumentStore;
 import org.hamcrest.CoreMatchers;
 import org.hamcrest.Description;
+import org.junit.Assert;
 import org.junit.Test;
 import org.junit.internal.matchers.TypeSafeMatcher;
 
@@ -139,7 +141,50 @@ public class MultiplexingDocumentStoreTest {
                 1);
         
         assertThat(nodes, NodeListMatcher.nodeListWithKeys("1:/1b"));
-    }       
+    }
+
+    @Test
+    public void query_atRoot() {
+        
+        DocumentStore root = new MemoryDocumentStore();
+        DocumentStore var = new MemoryDocumentStore();
+        
+        writeNode(root, "/1a");
+        writeNode(root, "/1b");
+        writeNode(var, "/1c");
+        writeNode(root, "/1d");
+        writeNode(root, "/1e");
+        
+        MultiplexingDocumentStore store = new MultiplexingDocumentStore.Builder()
+                .root(root)
+                .mount("/1c", var)
+                .build();
+        
+        List<NodeDocument> nodes = store.query(Collection.NODES, 
+                DocumentKeyImpl.fromPath("/").getValue(), 
+                DocumentKeyImpl.fromPath("/1b").getValue(), 
+                1);
+        
+        assertThat(nodes, NodeListMatcher.nodeListWithKeys("1:/1a"));
+    }
+    
+    @Test
+    public void remove_matchingInRootStore() {
+        
+        fail("Not implemented");
+    }
+    
+    @Test
+    public void remove_matchingInOtherStore() {
+        
+        fail("Not implemented");
+    }
+
+    @Test
+    public void remove_notMatching() {
+        
+        fail("Not implemented");
+    }
 
     private void writeNode(DocumentStore root, String path) {
         String id = DocumentKeyImpl.fromPath(path).getValue();
