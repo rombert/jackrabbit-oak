@@ -93,8 +93,7 @@ public class MultiplexingDocumentStore implements DocumentStore {
 
     @Override
     public <T extends Document> T find(Collection<T> collection, String key, int maxCacheAge) {
-        // TODO Auto-generated method stub
-        return null;
+        return find(collection, key, Integer.MAX_VALUE);
     }
 
     @Override
