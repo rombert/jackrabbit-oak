@@ -16,7 +16,10 @@
  */
 package org.apache.jackrabbit.oak.plugins.document;
 
+import static com.google.common.base.Preconditions.checkArgument;
+
 import java.io.InputStream;
+import java.util.List;
 import java.util.Set;
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
@@ -24,13 +27,6 @@ import java.util.concurrent.TimeUnit;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import javax.sql.DataSource;
-
-import com.google.common.cache.Cache;
-import com.google.common.cache.CacheBuilder;
-import com.google.common.cache.Weigher;
-import com.google.common.collect.Sets;
-import com.google.common.util.concurrent.MoreExecutors;
-import com.mongodb.DB;
 
 import org.apache.jackrabbit.oak.api.CommitFailedException;
 import org.apache.jackrabbit.oak.cache.CacheLIRS;
@@ -50,6 +46,7 @@ import org.apache.jackrabbit.oak.plugins.document.persistentCache.PersistentCach
 import org.apache.jackrabbit.oak.plugins.document.rdb.RDBBlobStore;
 import org.apache.jackrabbit.oak.plugins.document.rdb.RDBDocumentStore;
 import org.apache.jackrabbit.oak.plugins.document.rdb.RDBOptions;
+import org.apache.jackrabbit.oak.plugins.document.util.MongoConnection;
 import org.apache.jackrabbit.oak.plugins.document.util.RevisionsKey;
 import org.apache.jackrabbit.oak.plugins.document.util.StringValue;
 import org.apache.jackrabbit.oak.spi.blob.BlobStore;
@@ -59,7 +56,13 @@ import org.apache.jackrabbit.oak.stats.Clock;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import static com.google.common.base.Preconditions.checkArgument;
+import com.google.common.cache.Cache;
+import com.google.common.cache.CacheBuilder;
+import com.google.common.cache.Weigher;
+import com.google.common.collect.Lists;
+import com.google.common.collect.Sets;
+import com.google.common.util.concurrent.MoreExecutors;
+import com.mongodb.DB;
 
 /**
  * A JSON-based wrapper around the NodeStore implementation that stores the
@@ -492,9 +495,31 @@ public class DocumentMK {
         private Executor executor;
         private String persistentCacheURI = DEFAULT_PERSISTENT_CACHE_URI;
         private PersistentCache persistentCache;
+        private List<MongoDbMount> mounts = Lists.newArrayList();
 
         public Builder() {
+            
         }
+        
+        /**
+         * 
+         * Add a mount based on MongoDB
+         * 
+         * <p>Must be called before {@link #setMongoDB(DB, int, int)} to have effect.</p>
+         * 
+         * @param mountPath the path where the collection will be mounted, e.g. <tt>/etc</tt>
+         * @param connection the MongoDB connection
+         * @param collectionPrefix the prefix to be used for the collection name
+         */
+        public void addMongoDbMount(String mountPath, MongoConnection connection, String collectionPrefix) {
+            MongoDbMount m = new MongoDbMount();
+            m.mountPath = mountPath;
+            m.connection = connection;
+            m.colectionPrefix = collectionPrefix;
+            
+            mounts.add(m);
+        }
+
 
         /**
          * Use the given MongoDB as backend storage for the DocumentNodeStore.
@@ -507,7 +532,24 @@ public class DocumentMK {
         public Builder setMongoDB(DB db, int changesSizeMB, int blobCacheSizeMB) {
             if (db != null) {
                 if (this.documentStore == null) {
-                    this.documentStore = new MongoDocumentStore(db, this);
+                    
+                    if ( mounts.size() > 0 ) {
+                    
+                        MongoDocumentStore root = new MongoDocumentStore(db, this);
+                        
+                        MultiplexingDocumentStore.Builder builder = new MultiplexingDocumentStore.Builder();
+                        builder.root(root);
+                        
+                        for ( MongoDbMount mount : mounts ) {
+                            MongoDocumentStore store = new MongoDocumentStore(mount.connection.getDB(), this, mount.colectionPrefix);
+                            builder.mount(mount.mountPath, store);
+                        }
+                        
+                        this.documentStore = builder.build();
+
+                    } else {
+                        this.documentStore = new MongoDocumentStore(db, this);
+                    }
                 }
 
                 if (this.blobStore == null) {
@@ -933,7 +975,13 @@ public class DocumentMK {
                     recordStats().
                     build();
         }
-
+        
+        private static class MongoDbMount {
+            
+            private String mountPath;
+            private MongoConnection connection;
+            private String colectionPrefix;
+        }
     }
     
 }
