@@ -91,6 +91,10 @@ public class MultiplexingDocumentStore implements DocumentStore {
                 return o2.getMountPath().length() - o1.getMountPath().length();
             }
         });
+        
+        if ( candidates.isEmpty()) {
+            throw new IllegalArgumentException("Could not find an owning store for key " + key.getValue() + " ( matched path = " + key.getPath() + ")");
+        }
 
         // guaranteed to have at least one candidate since we mount the root store at '/'
         return candidates.get(0).getStore();
