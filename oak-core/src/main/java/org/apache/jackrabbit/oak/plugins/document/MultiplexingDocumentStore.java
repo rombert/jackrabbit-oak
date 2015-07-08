@@ -215,6 +215,11 @@ public class MultiplexingDocumentStore implements DocumentStore {
 
     @Override
     public <T extends Document> void update(Collection<T> collection, List<String> keys, UpdateOp updateOp) {
+        if ( collection != Collection.NODES) {
+            root.update(collection, keys, updateOp);
+            return;
+        }
+        
         for ( String key : keys) {
             findOwnerStore(key).update(collection, Collections.singletonList(key), updateOp);
         }
@@ -222,12 +227,19 @@ public class MultiplexingDocumentStore implements DocumentStore {
 
     @Override
     public <T extends Document> T createOrUpdate(Collection<T> collection, UpdateOp update) {
+        if ( collection != Collection.NODES) {
+            return root.createOrUpdate(collection, update);
+        }
         
         return findOwnerStore(update.getId()).createOrUpdate(collection, update);
     }
 
     @Override
     public <T extends Document> T findAndUpdate(Collection<T> collection, UpdateOp update) {
+        if ( collection != Collection.NODES) {
+            return root.findAndUpdate(collection, update);
+        }
+        
         return findOwnerStore(update.getId()).findAndUpdate(collection, update);
     }
 
