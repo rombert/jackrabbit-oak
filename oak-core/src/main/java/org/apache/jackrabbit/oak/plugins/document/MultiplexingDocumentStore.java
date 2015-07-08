@@ -33,7 +33,6 @@ import aQute.bnd.annotation.ConsumerType;
  * to the Unix mounts, where a filesystem can be mounted below a certain point.</p>
  * 
  */
-@ConsumerType
 public class MultiplexingDocumentStore implements DocumentStore {
     
     private final DocumentStore root;
