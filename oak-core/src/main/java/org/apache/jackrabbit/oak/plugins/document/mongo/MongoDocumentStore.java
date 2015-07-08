@@ -191,18 +191,25 @@ public class MongoDocumentStore implements DocumentStore {
     private String lastReadWriteMode;
 
     private final Map<String, String> metadata;
+    private final String prefix;
 
     public MongoDocumentStore(DB db, DocumentMK.Builder builder) {
+        this(db, builder, "");
+    }
+
+    public MongoDocumentStore(DB db, DocumentMK.Builder builder, String prefix) {
+        this.prefix = prefix; 
+        
         String version = checkVersion(db);
         metadata = ImmutableMap.<String,String>builder()
                 .put("type", "mongo")
                 .put("version", version)
                 .build();
 
-        nodes = db.getCollection(Collection.NODES.toString());
-        clusterNodes = db.getCollection(Collection.CLUSTER_NODES.toString());
-        settings = db.getCollection(Collection.SETTINGS.toString());
-        journal = db.getCollection(Collection.JOURNAL.toString());
+        nodes = getCollection(db, Collection.NODES);
+        clusterNodes = getCollection(db, Collection.CLUSTER_NODES);
+        settings = getCollection(db, Collection.SETTINGS);
+        journal = getCollection(db, Collection.JOURNAL);
 
         maxReplicationLagMillis = builder.getMaxReplicationLagMillis();
 
@@ -250,6 +257,17 @@ public class MongoDocumentStore implements DocumentStore {
         LOG.info("Configuration maxReplicationLagMillis {}, " +
                 "maxDeltaForModTimeIdxSecs {}, disableIndexHint {}",
                 maxReplicationLagMillis, maxDeltaForModTimeIdxSecs, disableIndexHint);
+    }
+
+    private DBCollection getCollection(DB db, Collection<?> coll) {
+        
+        String collectionName = coll.toString();
+        if ( prefix != null && !prefix.isEmpty() ) {
+            collectionName = prefix + "_" + collectionName;
+        }
+        
+        return db.getCollection(collectionName);
+        
     }
 
     private static String checkVersion(DB db) {
