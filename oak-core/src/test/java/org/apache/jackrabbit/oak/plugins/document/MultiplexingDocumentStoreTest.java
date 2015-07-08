@@ -85,6 +85,12 @@ public class MultiplexingDocumentStoreTest {
     }
     
     @Test
+    public void find_noResults_maxCacheParam() {
+        
+        assertNull(store.find(Collection.NODES, "1:/2a", Integer.MAX_VALUE));
+    }
+    
+    @Test
     public void query_multipleStores() {
         
         List<NodeDocument> nodes = store.query(Collection.NODES, "1:/1a", "1:/1e", 10);

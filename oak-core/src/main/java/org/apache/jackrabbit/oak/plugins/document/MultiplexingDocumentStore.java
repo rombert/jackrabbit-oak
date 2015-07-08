@@ -51,20 +51,16 @@ public class MultiplexingDocumentStore implements DocumentStore {
     
     @Override
     public <T extends Document> T find(Collection<T> collection, String key) {
-
-        if ( collection == Collection.NODES) {
-            return findNode(DocumentKeyImpl.fromKey(key));
-        }
         
-        return root.find(collection, key);
+        return find(collection, key, Integer.MAX_VALUE);
     }
     
-    private <T extends Document> T findNode(DocumentKey key) {
+    private <T extends Document> T findNode(DocumentKey key, int maxCacheAge) {
         
         DocumentStore store = findOwnerStore(key);
         
         // TODO - can we get rid of the cast? perhaps return NodeDocument
-        return (T) store.find(Collection.NODES, key.getValue());
+        return (T) store.find(Collection.NODES, key.getValue(), maxCacheAge);
     }
     
     private DocumentStore findOwnerStore(String key) {
@@ -102,7 +98,12 @@ public class MultiplexingDocumentStore implements DocumentStore {
 
     @Override
     public <T extends Document> T find(Collection<T> collection, String key, int maxCacheAge) {
-        return find(collection, key, Integer.MAX_VALUE);
+        if ( collection == Collection.NODES) {
+            return findNode(DocumentKeyImpl.fromKey(key), maxCacheAge);
+        }
+        
+        return root.find(collection, key, maxCacheAge);
+
     }
     
     @Override
