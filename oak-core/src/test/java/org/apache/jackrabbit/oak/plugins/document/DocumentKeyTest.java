@@ -5,17 +5,17 @@ import static org.junit.Assert.assertThat;
 
 import org.junit.Test;
 
-public class DocumentKeyImplTest {
+public class DocumentKeyTest {
     
     @Test
     public void fromKey() {
         
-        assertThat(DocumentKeyImpl.fromKey("0:/").getPath(), is("/"));
+        assertThat(DocumentKey.fromKey("0:/").getPath(), is("/"));
     }
 
     @Test
     public void fromPath() {
         
-        assertThat(DocumentKeyImpl.fromPath("/").getPath(), is("/"));
+        assertThat(DocumentKey.fromPath("/").getPath(), is("/"));
     }
 }

@@ -63,7 +63,7 @@ public class MultiplexingDocumentStore implements DocumentStore {
     }
     
     private DocumentStore findOwnerStore(String key) {
-        return findOwnerStore(DocumentKeyImpl.fromKey(key));
+        return findOwnerStore(DocumentKey.fromKey(key));
     }
 
     private DocumentStore findOwnerStore(DocumentKey key) {
@@ -98,7 +98,7 @@ public class MultiplexingDocumentStore implements DocumentStore {
     @Override
     public <T extends Document> T find(Collection<T> collection, String key, int maxCacheAge) {
         if ( collection == Collection.NODES) {
-            return findNode(DocumentKeyImpl.fromKey(key), maxCacheAge);
+            return findNode(DocumentKey.fromKey(key), maxCacheAge);
         }
         
         return root.find(collection, key, maxCacheAge);
@@ -113,8 +113,8 @@ public class MultiplexingDocumentStore implements DocumentStore {
             return root.query(collection, fromKey, toKey, limit);
         }
         
-        DocumentKey from = DocumentKeyImpl.fromKey(fromKey);
-        DocumentKey to = DocumentKeyImpl.fromKey(toKey);
+        DocumentKey from = DocumentKey.fromKey(fromKey);
+        DocumentKey to = DocumentKey.fromKey(toKey);
         
         DocumentStore owner = findOwnerStore(from);
         List<T> main = owner.query(collection, fromKey, toKey, indexedProperty, startValue, limit);
