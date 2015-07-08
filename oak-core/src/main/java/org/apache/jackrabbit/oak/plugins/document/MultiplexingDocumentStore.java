@@ -303,7 +303,7 @@ public class MultiplexingDocumentStore implements DocumentStore {
     @Override
     public Map<String, String> getMetadata() {
         // TODO return aggregate metadata?
-        return null;
+        return Collections.emptyMap();
     }
     
     /**
