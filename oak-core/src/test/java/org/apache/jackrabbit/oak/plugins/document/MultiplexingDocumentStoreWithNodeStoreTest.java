@@ -29,7 +29,7 @@ public class MultiplexingDocumentStoreWithNodeStoreTest {
         
         // 2. configure the DocumentNodeStore with a multiplexing document store, with a mount at "/tmp"
         DocumentMK.Builder builder = new DocumentMK.Builder();
-        builder.addMongoDbMount("/tmp", connection, "private");
+        builder.addMongoDbMount("/tmp", connection.getDB(), "private");
         builder.setMongoDB(connection.getDB(), 1, 16);
 
         DocumentNodeStore store = new DocumentNodeStore(builder);
