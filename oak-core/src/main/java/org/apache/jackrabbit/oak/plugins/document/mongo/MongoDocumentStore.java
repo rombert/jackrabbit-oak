@@ -817,16 +817,11 @@ public class MongoDocumentStore implements DocumentStore {
                 QueryBuilder query = createQueryForUpdate(updateOp.getId(),
                         updateOp.getConditions());
                 query.and(Document.MOD_COUNT).is(modCount);
-                DBObject fields = new BasicDBObject();
-                // return _id only
-                fields.put("_id", 1);
 
-                DBObject oldNode = dbCollection.findAndModify(query.get(), fields,
-                        null /*sort*/, false /*remove*/, update, false /*returnNew*/,
-                        false /*upsert*/);
-                if (oldNode != null) {
+                WriteResult result = dbCollection.update(query.get(), update);
+                if (result.getN() > 0) {
                     // success, update cached document
-                    applyToCache(collection, cachedDoc, updateOp);
+                    putToCache(collection, cachedDoc, updateOp);
                     // return previously cached document
                     return cachedDoc;
                 }
@@ -840,9 +835,11 @@ public class MongoDocumentStore implements DocumentStore {
                 return null;
             }
             T oldDoc = convertFromDBObject(collection, oldNode);
-            applyToCache(collection, oldDoc, updateOp);
             if (oldDoc != null) {
+                putToCache(collection, oldDoc, updateOp);
                 oldDoc.seal();
+            } else {
+                applyToCache(collection, null, updateOp);
             }
             return oldDoc;
         } catch (Exception e) {
@@ -1160,6 +1157,10 @@ public class MongoDocumentStore implements DocumentStore {
         return nodesCache.getIfPresent(new StringValue(id));
     }
 
+    protected Cache<CacheValue, NodeDocument> getNodeDocumentCache() {
+        return nodesCache;
+    }
+
     private static void log(String message, Object... args) {
         if (LOG.isDebugEnabled()) {
             String argList = Arrays.toString(args);
@@ -1276,6 +1277,30 @@ public class MongoDocumentStore implements DocumentStore {
             // will never happen because call() just returns
             // the already available doc
             throw new IllegalStateException(e);
+        }
+    }
+
+    /**
+     * Unconditionally puts a document into the cache if {@code collection} is
+     * {@link Collection#NODES}. The document put into the cache is
+     * {@code oldDoc} with the {@code updateOp} applied. This method does not
+     * acquire a lock from {@link #locks}! The caller must ensure a lock is held
+     * for the given document.
+     *
+     * @param collection the collection where oldDoc belongs to.
+     * @param oldDoc how the document looked before the update.
+     * @param updateOp the update just applied to the document.
+     */
+    private <T extends Document> void putToCache(@Nonnull Collection<T> collection,
+                                                 @Nonnull T oldDoc,
+                                                 @Nonnull UpdateOp updateOp) {
+        if (collection == Collection.NODES) {
+            CacheValue key = new StringValue(oldDoc.getId());
+            NodeDocument newDoc = (NodeDocument) collection.newDocument(this);
+            oldDoc.deepCopy(newDoc);
+            UpdateUtils.applyChanges(newDoc, updateOp, comparator);
+            newDoc.seal();
+            nodesCache.put(key, newDoc);
         }
     }
 

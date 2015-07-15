@@ -24,7 +24,6 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Random;
@@ -37,6 +36,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 import javax.management.openmbean.TabularData;
 
@@ -69,6 +70,7 @@ import static org.apache.jackrabbit.oak.plugins.nodetype.write.InitialContent.IN
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.junit.Assume.assumeTrue;
@@ -108,6 +110,33 @@ public class IndexCopierTest {
 
         //t1 should now be added to testDir
         assertTrue(baseDir.fileExists("t1"));
+    }
+
+    @Test
+    public void basicTestWithPrefetch() throws Exception{
+        Directory baseDir = new RAMDirectory();
+        IndexDefinition defn = new IndexDefinition(root, builder.getNodeState());
+        IndexCopier c1 = new RAMIndexCopier(baseDir, sameThreadExecutor(), getWorkDir(), true);
+
+        Directory remote = new RAMDirectory();
+
+        byte[] t1 = writeFile(remote, "t1");
+        byte[] t2 = writeFile(remote , "t2");
+
+        Directory wrapped = c1.wrapForRead("/foo", defn, remote);
+        assertEquals(2, wrapped.listAll().length);
+
+        assertTrue(wrapped.fileExists("t1"));
+        assertTrue(wrapped.fileExists("t2"));
+
+        assertTrue(baseDir.fileExists("t1"));
+        assertTrue(baseDir.fileExists("t2"));
+
+        assertEquals(t1.length, wrapped.fileLength("t1"));
+        assertEquals(t2.length, wrapped.fileLength("t2"));
+
+        readAndAssert(wrapped, "t1", t1);
+
     }
 
     @Test
@@ -811,8 +840,58 @@ public class IndexCopierTest {
     }
 
     @Test
-    public void cowIndexPathNotDefined() throws Exception{
+    public void cowPoolClosedWithTaskInQueue() throws Exception{
+        ExecutorService executorService = Executors.newFixedThreadPool(2);
+        Directory baseDir = new CloseSafeDir();
+        IndexDefinition defn = new IndexDefinition(root, builder.getNodeState());
+        IndexCopier copier = new RAMIndexCopier(baseDir, executorService, getWorkDir());
 
+        final Set<String> toPause = Sets.newHashSet();
+        final CountDownLatch pauseCopyLatch = new CountDownLatch(1);
+        Directory remote = new CloseSafeDir() {
+            @Override
+            public IndexOutput createOutput(String name, IOContext context) throws IOException {
+                if (toPause.contains(name)){
+                    try {
+                        pauseCopyLatch.await();
+                    } catch (InterruptedException ignore) {
+
+                    }
+                }
+                return super.createOutput(name, context);
+            }
+        };
+
+        final Directory local = copier.wrapForWrite(defn, remote, false);
+        toPause.add("t2");
+        byte[] t1 = writeFile(local, "t1");
+        byte[] t2 = writeFile(local, "t2");
+        byte[] t3 = writeFile(local, "t3");
+        byte[] t4 = writeFile(local, "t4");
+
+        final AtomicReference<Throwable> error =
+                new AtomicReference<Throwable>();
+        Thread closer = new Thread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    local.close();
+                } catch (Throwable e) {
+                    e.printStackTrace();
+                    error.set(e);
+                }
+            }
+        });
+
+        closer.start();
+
+        copier.close();
+        executorService.shutdown();
+        executorService.awaitTermination(100, TimeUnit.MILLISECONDS);
+
+        pauseCopyLatch.countDown();
+        closer.join();
+        assertNotNull("Close should have thrown an exception", error.get());
     }
 
     private byte[] writeFile(Directory dir, String name) throws IOException {
@@ -849,9 +928,14 @@ public class IndexCopierTest {
     private class RAMIndexCopier extends IndexCopier {
         final Directory baseDir;
 
-        public RAMIndexCopier(Directory baseDir, Executor executor, File indexRootDir) throws IOException {
-            super(executor, indexRootDir);
+        public RAMIndexCopier(Directory baseDir, Executor executor, File indexRootDir,
+                              boolean prefetchEnabled) throws IOException {
+            super(executor, indexRootDir, prefetchEnabled);
             this.baseDir = baseDir;
+        }
+
+        public RAMIndexCopier(Directory baseDir, Executor executor, File indexRootDir) throws IOException {
+            this(baseDir, executor, indexRootDir, false);
         }
 
         @Override

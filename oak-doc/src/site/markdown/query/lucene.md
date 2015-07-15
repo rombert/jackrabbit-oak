@@ -375,7 +375,7 @@ size. Refer to [OAK-2306][OAK-2306] for more details.
 <a name="include-exclude"></a>
 ##### Include and Exclude paths from indexing
 
-_Since 1.0.14+ and 1.2.3+_
+`@since Oak 1.0.14, 1.2.3`
 
 By default the indexer would index all the nodes under the subtree where the 
 index  definition is defined as per the indexingRule. In some cases its required
@@ -503,10 +503,9 @@ defaults to 5
             - path = "renditions/original"
             - relativeNode = true
 
-#### Analyzers (1.1.6)
+#### Analyzers
 
-_This feature is currently not part of 1.0 branch and is only present in unstable
-1.x releases_
+`@since Oak 1.2.0`
 
 Analyzers can be configured as part of index definition via `analyzers` node.
 The default analyzer can be configured via `analyzers/default` node
@@ -611,11 +610,18 @@ localIndexDir
 : Directory to be used for when copy index files to local file system. To be 
 specified when `enableCopyOnReadSupport` is enabled
 
+prefetchIndexFiles
+: Prefetch the index files when CopyOnRead is enabled. When enabled all new Lucene 
+index files would be copied locally before the index is made available to 
+QueryEngine (1.0.17,1.2.3)
+
 debug
 : Boolean value. Defaults to `false`
 : If enabled then Lucene logging would be integrated with Slf4j
 
-### Tika Config (1.0.12)
+### Tika Config
+
+`@since Oak 1.0.12, 1.2.3`
 
 Oak Lucene uses [Apache Tika][tika] to extract the text from binary content
 
@@ -722,7 +728,7 @@ _With Oak 1.0.13 this feature is now enabled by default._
 <a name="copy-on-write"></a>
 ### CopyOnWrite
 
-_Since 1.0.15 and 1.2.3_
+`@since Oak 1.0.15, 1.2.3`
 
 Similar to _CopyOnRead_ feature Oak Lucene also supports _CopyOnWrite_ to enable
 faster indexing by first buffering the writes to local filesystem and transferring
@@ -792,20 +798,74 @@ mentioned steps
         
 From the Luke UI shown you can access various details.
 
-#### Advanced search features
+<a name="text-extraction"></a>
+### Pre-Extracting Text from Binaries
 
-##### Suggestions
+`@since Oak 1.0.18, 1.2.3`
+
+Lucene indexing is performed in a single threaded mode. Extracting text from 
+binaries is an expensive operation and slows down the indexing rate considerably.
+For incremental indexing this mostly works fine but if performing a reindex
+or creating the index for the first time after migration then it increases the 
+indexing time considerably. 
+
+To speed up the Lucene indexing for such cases i.e. reindexing, we can decouple 
+the text extraction from actual indexing. 
+
+1. Extract and store the extracted text from binaries via [oak-run tool][oak-run-tika]
+2. Configure a `PreExtractedTextProvider` which can lookup extracted text and 
+   thus avoid text extraction at time of actual indexing
+   
+Below are details around steps required for making using of this feature
+
+1. Generate the csv file containing binary file details
+
+        java -cp tika-app-1.8.jar:oak-run.jar \
+        org.apache.jackrabbit.oak.run.Main tika \  
+        --fds-path /path/to/datastore \
+        --nodestore /path/to/segmentstore --data-file dump.csv generate
+
+2. Extract the text 
+
+        java -cp tika-app-1.8.jar:oak-run.jar \
+        org.apache.jackrabbit.oak.run.Main tika \
+        --data-file binary-stats.csv \
+        --store-path ./store 
+        --fds-path /path/to/datastore  extract
+
+3.  Configure the `PreExtractedTextProvider` - Once the extraction is performed 
+    configure a `PreExtractedTextProvider` within the application such that Lucene 
+    indexer can make use of that to lookup extracted text. 
+
+    For this look for OSGi config for `Apache Jackrabbit Oak DataStore PreExtractedTextProvider`
+        
+    ![OSGi Configuration](pre-extracted-text-osgi.png)   
+   
+Once `PreExtractedTextProvider` is configured then upon reindexing Lucene
+indexer would make use of it to check if text needs to be extracted or not. Check
+`TextExtractionStatsMBean` for various statistics around text extraction and also
+to validate if `PreExtractedTextProvider` is being used.
+
+For more details on this feature refer to [OAK-2892][OAK-2892]
+
+### Advanced search features
+
+#### Suggestions
 
 `@since Oak 1.1.17, 1.0.15`
 
-In order to use Lucene index to perform search suggestions, the index definition node (the one of type `oak:QueryIndexDefinition`)
- needs to have the `compatVersion` set to `2`, then one or more property nodes, depending on use case, need to have the 
- property `useForSuggest` set to `true`, such setting controls from which properties terms to be used for suggestions will be taken.
+In order to use Lucene index to perform search suggestions, the index definition 
+node (the one of type `oak:QueryIndexDefinition`) needs to have the `compatVersion` 
+set to `2`, then one or more property nodes, depending on use case, need to have 
+the property `useForSuggest` set to `true`, such setting controls from which 
+properties terms to be used for suggestions will be taken.
  
-Once the above configuration has been done, by default, the Lucene suggester is updated every 10 minutes but that can be 
-changed by setting the property `suggestUpdateFrequencyMinutes` in the index definition node to a different value.
+Once the above configuration has been done, by default, the Lucene suggester is 
+updated every 10 minutes but that can be changed by setting the property 
+`suggestUpdateFrequencyMinutes` in the index definition node to a different value.
 
-Sample configuration for suggestions based on terms contained in `jcr:description` property.
+Sample configuration for suggestions based on terms contained in `jcr:description` 
+property.
 
 ```
 /oak:index/lucene-suggest
@@ -825,16 +885,18 @@ Sample configuration for suggestions based on terms contained in `jcr:descriptio
           - useForSuggest = true
 ```
 
-##### Spellchecking
+#### Spellchecking
 
 `@since Oak 1.1.17, 1.0.13`
 
-In order to use Lucene index to perform spellchecking, the index definition node (the one of type `oak:QueryIndexDefinition`)
- needs to have the `compatVersion` set to `2`, then one or more property nodes, depending on use case, need to have the 
- property `useForSpellcheck` set to `true`, such setting controls from which properties terms to be used for spellcheck 
- corrections will be taken.
+In order to use Lucene index to perform spellchecking, the index definition node 
+(the one of type `oak:QueryIndexDefinition`) needs to have the `compatVersion` 
+set to `2`, then one or more property nodes, depending on use case, need to have 
+the property `useForSpellcheck` set to `true`, such setting controls from which 
+properties terms to be used for spellcheck corrections will be taken.
  
-Sample configuration for spellchecking based on terms contained in `jcr:title` property.
+Sample configuration for spellchecking based on terms contained in `jcr:title` 
+property.
 
 ```
 /oak:index/lucene-spellcheck
@@ -1265,6 +1327,7 @@ such fields
 [OAK-2599]: https://issues.apache.org/jira/browse/OAK-2599
 [OAK-2247]: https://issues.apache.org/jira/browse/OAK-2247
 [OAK-2853]: https://issues.apache.org/jira/browse/OAK-2853
+[OAK-2892]: https://issues.apache.org/jira/browse/OAK-2892
 [luke]: https://code.google.com/p/luke/
 [tika]: http://tika.apache.org/
 [oak-console]: https://github.com/apache/jackrabbit-oak/tree/trunk/oak-run#console
@@ -1272,3 +1335,5 @@ such fields
 [solr-analyzer]: https://wiki.apache.org/solr/AnalyzersTokenizersTokenFilters#Specifying_an_Analyzer_in_the_schema
 [default-config]: https://github.com/apache/jackrabbit-oak/blob/trunk/oak-lucene/src/main/resources/org/apache/jackrabbit/oak/plugins/index/lucene/tika-config.xml
 [lucene-codec]: https://lucene.apache.org/core/4_7_1/core/org/apache/lucene/codecs/Codec.html
+[tika-download]: https://tika.apache.org/download.html
+[oak-run-tika]: https://github.com/apache/jackrabbit-oak/tree/trunk/oak-run#tika

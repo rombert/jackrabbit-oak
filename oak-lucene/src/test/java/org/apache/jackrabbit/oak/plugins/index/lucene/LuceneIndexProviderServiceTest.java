@@ -19,10 +19,14 @@
 
 package org.apache.jackrabbit.oak.plugins.index.lucene;
 
+import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 
+import org.apache.jackrabbit.oak.api.Blob;
 import org.apache.jackrabbit.oak.plugins.index.IndexEditorProvider;
+import org.apache.jackrabbit.oak.plugins.index.fulltext.ExtractedText;
+import org.apache.jackrabbit.oak.plugins.index.fulltext.PreExtractedTextProvider;
 import org.apache.jackrabbit.oak.spi.commit.BackgroundObserver;
 import org.apache.jackrabbit.oak.spi.commit.Observer;
 import org.apache.jackrabbit.oak.spi.query.QueryIndexProvider;
@@ -39,6 +43,11 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 public class LuceneIndexProviderServiceTest {
+    /*
+        The test case uses raw config name and not access it via
+         constants in LuceneIndexProviderService to ensure that change
+         in names are detected
+     */
 
     @Rule
     public final TemporaryFolder folder = new TemporaryFolder();
@@ -59,6 +68,10 @@ public class LuceneIndexProviderServiceTest {
         LuceneIndexEditorProvider editorProvider =
                 (LuceneIndexEditorProvider) context.getService(IndexEditorProvider.class);
         assertNull(editorProvider.getIndexCopier());
+
+        IndexCopier indexCopier = service.getIndexCopier();
+        assertNotNull("IndexCopier should be initialized as CopyOnRead is enabled by default", indexCopier);
+        assertTrue(indexCopier.isPrefetchEnabled());
 
         assertNotNull("CopyOnRead should be enabled by default", context.getService(CopyOnReadStatsMBean.class));
 
@@ -95,6 +108,18 @@ public class LuceneIndexProviderServiceTest {
     }
 
     @Test
+    public void enablePrefetchIndexFiles() throws Exception{
+        Map<String,Object> config = getDefaultConfig();
+        config.put("prefetchIndexFiles", true);
+        MockOsgi.activate(service, context.bundleContext(), config);
+
+        IndexCopier indexCopier = service.getIndexCopier();
+        assertTrue(indexCopier.isPrefetchEnabled());
+
+        MockOsgi.deactivate(service);
+    }
+
+    @Test
     public void debugLogging() throws Exception{
         Map<String,Object> config = getDefaultConfig();
         config.put("debug", true);
@@ -104,9 +129,31 @@ public class LuceneIndexProviderServiceTest {
         MockOsgi.deactivate(service);
     }
 
+    @Test
+    public void preExtractedTextProvider() throws Exception{
+        MockOsgi.activate(service, context.bundleContext(), getDefaultConfig());
+        LuceneIndexEditorProvider editorProvider =
+                (LuceneIndexEditorProvider) context.getService(IndexEditorProvider.class);
+        assertNull(editorProvider.getExtractedTextCache().getExtractedTextProvider());
+
+        //Mock OSGi does not support components
+        //context.registerService(PreExtractedTextProvider.class, new DummyProvider());
+        service.bindExtractedTextProvider(new DummyProvider());
+
+        assertNotNull(editorProvider.getExtractedTextCache().getExtractedTextProvider());
+    }
+
     private Map<String,Object> getDefaultConfig(){
         Map<String,Object> config = new HashMap<String, Object>();
         config.put("localIndexDir", folder.getRoot().getAbsolutePath());
         return config;
+    }
+
+    private static class DummyProvider implements PreExtractedTextProvider {
+
+        @Override
+        public ExtractedText getText(String propertyPath, Blob blob) throws IOException {
+            return null;
+        }
     }
 }
