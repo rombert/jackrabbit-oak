@@ -281,4 +281,36 @@ public interface DocumentStore {
      * @return description of the underlying storage.
      */
     Map<String, String> getMetadata();
+    
+    /**
+     * @param customiser the customiser instance to use
+     */
+    void setDocumentCreationCustomiser(DocumentCreationCustomiser customiser);
+    
+    /**
+     * The <tt>DocumentCreationCustomiser</tt> allows flexibility when creating a document for a new collection
+     * 
+     * <p>This extension point is useful, for instance, when the creating DocumentStore is not the same as the DocumentStore
+     * to which the Document instance should be linked</tt>
+     *
+     */
+    interface DocumentCreationCustomiser {
+        
+        <T extends Document> T newDocument(Collection<T> collection);
+    }
+    
+    public class DefaultDocumentCreationCustomiser implements DocumentCreationCustomiser {
+        
+        private final DocumentStore store;
+
+        public DefaultDocumentCreationCustomiser(DocumentStore store) {
+            this.store = store;
+        }
+        
+        @Override
+        public <T extends Document> T newDocument(Collection<T> collection) {
+            return collection.newDocument(store);
+        }
+        
+    }
 }

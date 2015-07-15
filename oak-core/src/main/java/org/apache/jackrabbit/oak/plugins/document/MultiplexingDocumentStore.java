@@ -17,8 +17,6 @@ import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 
-import aQute.bnd.annotation.ConsumerType;
-
 /**
  * The <tt>MultiplexingDocumentStore</tt> wraps two or more <tt>DocumentStore</tt> instances
  * 
@@ -46,6 +44,9 @@ public class MultiplexingDocumentStore implements DocumentStore {
         this.mounts.add(new DocumentStoreMount(root, "/"));
         this.mounts.addAll(mounts);
         
+        for ( DocumentStoreMount mount : this.mounts ) {
+            mount.getStore().setDocumentCreationCustomiser(new DefaultDocumentCreationCustomiser(this));
+        }
     }
     
     @Override
@@ -303,6 +304,12 @@ public class MultiplexingDocumentStore implements DocumentStore {
     public Map<String, String> getMetadata() {
         // TODO return aggregate metadata?
         return Collections.emptyMap();
+    }
+    
+    @Override
+    public void setDocumentCreationCustomiser(DocumentCreationCustomiser customiser) {
+        // TODO - forward to mounts?
+        throw new UnsupportedOperationException();
     }
     
     /**

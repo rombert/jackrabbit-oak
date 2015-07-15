@@ -13,7 +13,6 @@ import org.apache.jackrabbit.oak.plugins.document.util.MongoConnection;
 import org.apache.jackrabbit.oak.spi.security.OpenSecurityProvider;
 import org.junit.After;
 import org.junit.Before;
-import org.junit.Ignore;
 import org.junit.Test;
 
 public class MultiplexingDocumentStoreWithNodeStoreTest {
@@ -48,7 +47,6 @@ public class MultiplexingDocumentStoreWithNodeStoreTest {
     }
 
     @Test
-    @Ignore("fails for now")
     public void mountedNodeCreationIsVisible() throws Exception {
 
         // 1. Create a tree at /tmp ( mounted store ) and one at /content ( root store )

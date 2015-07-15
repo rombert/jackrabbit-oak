@@ -398,7 +398,12 @@ public class RDBDocumentStore implements DocumentStore {
     public Map<String, String> getMetadata() {
         return metadata;
     }
-
+    
+    @Override
+    public void setDocumentCreationCustomiser(DocumentCreationCustomiser customiser) {
+        this.customiser = customiser;
+    }
+    
     // implementation
 
     enum FETCHFIRSTSYNTAX { FETCHFIRST, LIMIT, TOP};
@@ -826,6 +831,8 @@ public class RDBDocumentStore implements DocumentStore {
             NodeDocument.HAS_BINARY_FLAG, NodeDocument.DELETED_ONCE, COLLISIONSMODCOUNT, MODIFIED, MODCOUNT }));
 
     private final RDBDocumentSerializer SR = new RDBDocumentSerializer(this, COLUMNPROPERTIES);
+    
+    private DocumentCreationCustomiser customiser = new DefaultDocumentCreationCustomiser(this);
 
     private void initialize(DataSource ds, DocumentMK.Builder builder, RDBOptions options) throws Exception {
 
@@ -1069,7 +1076,7 @@ public class RDBDocumentStore implements DocumentStore {
             for (List<UpdateOp> chunks : Lists.partition(updates, CHUNKSIZE)) {
                 List<T> docs = new ArrayList<T>();
                 for (UpdateOp update : chunks) {
-                    T doc = collection.newDocument(this);
+                    T doc = customiser.newDocument(collection);
                     update.increment(MODCOUNT, 1);
                     if (hasChangesToCollisions(update)) {
                         update.increment(COLLISIONSMODCOUNT, 1);
@@ -1108,7 +1115,7 @@ public class RDBDocumentStore implements DocumentStore {
             } else if (!update.isNew()) {
                 throw new DocumentStoreException("Document does not exist: " + update.getId());
             }
-            T doc = collection.newDocument(this);
+            T doc = customiser.newDocument(collection);
             if (checkConditions && !checkConditions(doc, update.getConditions())) {
                 return null;
             }
@@ -1207,7 +1214,7 @@ public class RDBDocumentStore implements DocumentStore {
 
     @CheckForNull
     private <T extends Document> T applyChanges(Collection<T> collection, T oldDoc, UpdateOp update, boolean checkConditions) {
-        T doc = collection.newDocument(this);
+        T doc = customiser.newDocument(collection);
         oldDoc.deepCopy(doc);
         if (checkConditions && !checkConditions(doc, update.getConditions())) {
             return null;

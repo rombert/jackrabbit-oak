@@ -96,6 +96,8 @@ public class MemoryDocumentStore implements DocumentStore {
 
     private final Map<String, String> metadata;
 
+    private DocumentCreationCustomiser customiser = new DefaultDocumentCreationCustomiser(this);
+
     public MemoryDocumentStore() {
         metadata = ImmutableMap.<String,String>builder()
                         .put("type", "memory")
@@ -256,7 +258,7 @@ public class MemoryDocumentStore implements DocumentStore {
             // get the node if it's there
             oldDoc = map.get(update.getId());
 
-            T doc = collection.newDocument(this);
+            T doc = customiser.newDocument(collection);
             if (oldDoc == null) {
                 if (!update.isNew()) {
                     throw new DocumentStoreException("Document does not exist: " + update.getId());
@@ -400,6 +402,11 @@ public class MemoryDocumentStore implements DocumentStore {
     @Override
     public Map<String, String> getMetadata() {
         return metadata;
+    }
+    
+    @Override
+    public void setDocumentCreationCustomiser(DocumentCreationCustomiser customiser) {
+        this.customiser  = customiser;
     }
 
 }

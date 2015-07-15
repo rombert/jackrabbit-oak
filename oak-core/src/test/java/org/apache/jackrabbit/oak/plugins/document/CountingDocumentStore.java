@@ -218,5 +218,9 @@ public class CountingDocumentStore implements DocumentStore {
     public Map<String, String> getMetadata() {
         return delegate.getMetadata();
     }
-
+    
+    @Override
+    public void setDocumentCreationCustomiser(DocumentCreationCustomiser customiser) {
+        delegate.setDocumentCreationCustomiser(customiser);
+    }
 }

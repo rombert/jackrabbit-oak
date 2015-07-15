@@ -140,4 +140,9 @@ public class SynchronizingDocumentStoreWrapper implements DocumentStore {
     public Map<String, String> getMetadata() {
         return store.getMetadata();
     }
+    
+    @Override
+    public void setDocumentCreationCustomiser(DocumentCreationCustomiser customiser) {
+        store.setDocumentCreationCustomiser(customiser);
+    }
 }

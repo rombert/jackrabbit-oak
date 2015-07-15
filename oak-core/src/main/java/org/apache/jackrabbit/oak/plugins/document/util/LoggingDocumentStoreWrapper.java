@@ -334,6 +334,11 @@ public class LoggingDocumentStoreWrapper implements DocumentStore {
         return store.getMetadata();
     }
 
+    @Override
+    public void setDocumentCreationCustomiser(DocumentCreationCustomiser customiser) {
+        store.setDocumentCreationCustomiser(customiser);
+    }
+
     private void logMethod(String methodName, Object... args) {
         StringBuilder buff = new StringBuilder("ds");
         buff.append('.').append(methodName).append('(');

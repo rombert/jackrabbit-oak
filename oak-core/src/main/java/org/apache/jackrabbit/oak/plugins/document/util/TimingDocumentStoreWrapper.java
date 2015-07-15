@@ -358,6 +358,11 @@ public class TimingDocumentStoreWrapper implements DocumentStore {
         return base.getMetadata();
     }
 
+    @Override
+    public void setDocumentCreationCustomiser(DocumentCreationCustomiser customiser) {
+        base.setDocumentCreationCustomiser(customiser);
+    }
+    
     private void logCommonCall(long start, String key) {
         int time = (int) (System.currentTimeMillis() - start);
         if (time <= 0) {

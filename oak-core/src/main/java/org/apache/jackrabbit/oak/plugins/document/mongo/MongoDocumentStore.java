@@ -192,6 +192,7 @@ public class MongoDocumentStore implements DocumentStore {
 
     private final Map<String, String> metadata;
     private final String prefix;
+    private DocumentCreationCustomiser customiser = new DefaultDocumentCreationCustomiser(this);
 
     public MongoDocumentStore(DB db, DocumentMK.Builder builder) {
         this(db, builder, "");
@@ -880,7 +881,7 @@ public class MongoDocumentStore implements DocumentStore {
         for (int i = 0; i < updateOps.size(); i++) {
             inserts[i] = new BasicDBObject();
             UpdateOp update = updateOps.get(i);
-            T target = collection.newDocument(this);
+            T target = customiser.newDocument(collection);
             UpdateUtils.applyChanges(target, update, comparator);
             docs.add(target);
             for (Entry<Key, Operation> entry : update.getChanges().entrySet()) {
@@ -1059,7 +1060,7 @@ public class MongoDocumentStore implements DocumentStore {
                                                          @Nullable DBObject n) {
         T copy = null;
         if (n != null) {
-            copy = collection.newDocument(this);
+            copy = customiser.newDocument(collection);
             for (String key : n.keySet()) {
                 Object o = n.get(key);
                 if (o instanceof String) {
@@ -1129,6 +1130,12 @@ public class MongoDocumentStore implements DocumentStore {
     public Map<String, String> getMetadata() {
         return metadata;
     }
+    
+    @Override
+    public void setDocumentCreationCustomiser(DocumentCreationCustomiser customiser) {
+
+        this.customiser = customiser;
+    }
 
     long getMaxDeltaForModTimeIdxSecs() {
         return maxDeltaForModTimeIdxSecs;
@@ -1190,7 +1197,7 @@ public class MongoDocumentStore implements DocumentStore {
         // cache the new document
         if (collection == Collection.NODES) {
             CacheValue key = new StringValue(updateOp.getId());
-            NodeDocument newDoc = (NodeDocument) collection.newDocument(this);
+            NodeDocument newDoc = (NodeDocument) customiser.newDocument(collection);
             if (oldDoc != null) {
                 // we can only update the cache based on the oldDoc if we
                 // still have the oldDoc in the cache, otherwise we may
