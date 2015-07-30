@@ -1296,7 +1296,7 @@ public class MongoDocumentStore implements DocumentStore {
                                                  @Nonnull UpdateOp updateOp) {
         if (collection == Collection.NODES) {
             CacheValue key = new StringValue(oldDoc.getId());
-            NodeDocument newDoc = (NodeDocument) collection.newDocument(this);
+            NodeDocument newDoc = (NodeDocument) customiser.newDocument(collection) ;
             oldDoc.deepCopy(newDoc);
             UpdateUtils.applyChanges(newDoc, updateOp, comparator);
             newDoc.seal();
