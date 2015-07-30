@@ -283,8 +283,11 @@ public class MultiplexingDocumentStore implements DocumentStore {
 
     @Override
     public <T extends Document> T getIfCached(Collection<T> collection, String key) {
-        // TODO Auto-generated method stub
-        return null;
+        if ( collection != Collection.NODES) {
+            return root.getIfCached(collection, key);
+        }
+
+        return findOwnerStore(key).getIfCached(collection, key);
     }
 
     @Override
