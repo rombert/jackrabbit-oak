@@ -1968,6 +1968,11 @@ public final class DocumentNodeStore
                 continue;
             }
             for (UpdateOp op : doc.split(this, head)) {
+                
+                // STOP LOOKING
+                op.splitFrom = doc.getId();
+                // START LOOKING AGAIN
+                
                 NodeDocument before = store.createOrUpdate(Collection.NODES, op);
                 if (before != null) {
                     if (LOG.isDebugEnabled()) {

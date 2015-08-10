@@ -2,6 +2,9 @@ package org.apache.jackrabbit.oak.plugins.document;
 
 import static org.junit.Assert.assertTrue;
 
+import java.net.UnknownHostException;
+import java.util.Map;
+
 import javax.jcr.SimpleCredentials;
 
 import org.apache.jackrabbit.oak.Oak;
@@ -14,6 +17,12 @@ import org.apache.jackrabbit.oak.spi.security.OpenSecurityProvider;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
+
+import com.google.common.collect.Maps;
+import com.mongodb.DB;
+import com.mongodb.MongoClient;
+import com.mongodb.MongoClientOptions;
+import com.mongodb.MongoClientURI;
 
 public class MultiplexingDocumentStoreWithNodeStoreTest {
     
@@ -54,7 +63,8 @@ public class MultiplexingDocumentStoreWithNodeStoreTest {
         try {
             Root r = session.getLatestRoot();
             Tree root = r.getTree("/");
-            root.addChild("tmp");
+            Tree tmp = root.addChild("tmp");
+            tmp.addChild("child");
             root.addChild("content");
             r.commit();
         } finally {
@@ -67,6 +77,8 @@ public class MultiplexingDocumentStoreWithNodeStoreTest {
             Tree root = session.getLatestRoot().getTree("/");
             assertTreeExists(root, "content");
             assertTreeExists(root, "tmp");
+            Tree tmp = root.getChild("tmp");
+            assertTreeExists(tmp, "child");
         } finally {
             session.close();
         }
@@ -78,5 +90,58 @@ public class MultiplexingDocumentStoreWithNodeStoreTest {
         Tree content = root.getChild(childName);
         assertTrue("Tree at " + content.getPath() + " does not exist", content.exists());
     }
+    
+    @Test
+    public void splitRevisions() throws Exception {
 
+        MultiplexingBasedDocumentSplitTest delegate = new MultiplexingBasedDocumentSplitTest();
+        delegate.initDocumentMK(); // not managed by JUnit so call the @Before manually
+        delegate.splitRevisions();
+    }
+
+    /**
+     * Variant of the <tt>DocumentSplitTest</tt> which uses a multiplexed Documentstore
+     *
+     */
+    private static final class MultiplexingBasedDocumentSplitTest extends DocumentSplitTest {
+        
+        @Override
+        public void initDocumentMK() {
+            boolean useMultiplexing = true;
+            boolean dropDatabase = true;
+            
+            String db = "oak-test-mpx-" + useMultiplexing;
+            String uri = "mongodb://localhost:27017/" + db;
+            
+            DocumentMK.Builder mkBuilder = new DocumentMK.Builder();
+
+            MongoClientOptions.Builder builder = MongoConnection.getDefaultBuilder();
+            MongoClientURI mongoURI = new MongoClientURI(uri, builder);
+
+            MongoClient client;
+            try {
+                client = new MongoClient(mongoURI);
+            } catch (UnknownHostException e) {
+                throw new RuntimeException(e);
+            }
+            DB mongoDB = client.getDB(db);
+
+            if ( dropDatabase) {
+                mongoDB.dropDatabase();
+            }
+
+            if ( useMultiplexing ) {
+                Map<String, String> mounts = Maps.newLinkedHashMap();
+                mounts.put("/extra", "extra");
+                
+                for (Map.Entry<String, String> entry : mounts.entrySet()) {
+                    mkBuilder.addMongoDbMount(entry.getKey(), mongoDB, entry.getValue());
+                }
+            }
+
+            mkBuilder.setMongoDB(mongoDB, 256, 16);
+
+            mk = mkBuilder.open();                
+        }
+    }
 }

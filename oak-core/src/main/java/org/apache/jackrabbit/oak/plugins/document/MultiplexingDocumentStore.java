@@ -55,19 +55,22 @@ public class MultiplexingDocumentStore implements DocumentStore {
         return find(collection, key, Integer.MAX_VALUE);
     }
     
-    private <T extends Document> T findNode(DocumentKey key, int maxCacheAge) {
-        
-        DocumentStore store = findOwnerStore(key);
-        
-        // TODO - can we get rid of the cast? perhaps return NodeDocument
-        return (T) store.find(Collection.NODES, key.getValue(), maxCacheAge);
+    private DocumentStore findOwnerStore(String key, Collection<?> collection, OnFailure onFailure) {
+
+        return findOwnerStore(DocumentKey.fromKey(key), collection, onFailure);
     }
     
-    private DocumentStore findOwnerStore(String key) {
-        return findOwnerStore(DocumentKey.fromKey(key));
+    private DocumentStore findOwnerStore(UpdateOp update, Collection<?> collection, OnFailure onFailure) {
+        
+        return findOwnerStore(update.splitFrom != null ? update.splitFrom : update.getId(), collection, onFailure);
     }
+    
 
-    private DocumentStore findOwnerStore(DocumentKey key) {
+    private DocumentStore findOwnerStore(DocumentKey key, Collection<?> collection, OnFailure onFailure) {
+        
+        if ( collection != Collection.NODES ) {
+            return root;
+        }
         
         String path = key.getPath();
         
@@ -89,6 +92,18 @@ public class MultiplexingDocumentStore implements DocumentStore {
         });
         
         if ( candidates.isEmpty()) {
+            
+            if ( onFailure == OnFailure.CALL_FIND_FOR_MATCHING_KEY) {
+                // split documents don't have reasonable id so we can't locate
+                // a store for them beforehand ;
+                for ( DocumentStoreMount mount : mounts ) {
+                    if ( mount.getStore().find(Collection.NODES, key.getValue()) != null ) {
+                        return mount.getStore();
+                    }
+                }
+                
+            }
+            
             throw new IllegalArgumentException("Could not find an owning store for key " + key.getValue() + " ( matched path = " + key.getPath() + ")");
         }
 
@@ -98,12 +113,9 @@ public class MultiplexingDocumentStore implements DocumentStore {
 
     @Override
     public <T extends Document> T find(Collection<T> collection, String key, int maxCacheAge) {
-        if ( collection == Collection.NODES) {
-            return findNode(DocumentKey.fromKey(key), maxCacheAge);
-        }
         
-        return root.find(collection, key, maxCacheAge);
-
+        return findOwnerStore(key, collection, OnFailure.CALL_FIND_FOR_MATCHING_KEY)
+            .find(collection, key, maxCacheAge);
     }
     
     @Override
@@ -117,7 +129,7 @@ public class MultiplexingDocumentStore implements DocumentStore {
         DocumentKey from = DocumentKey.fromKey(fromKey);
         DocumentKey to = DocumentKey.fromKey(toKey);
         
-        DocumentStore owner = findOwnerStore(from);
+        DocumentStore owner = findOwnerStore(from, collection, OnFailure.FAIL_FAST);
         List<T> main = owner.query(collection, fromKey, toKey, indexedProperty, startValue, limit);
         // TODO - do we need a query on the contributing stores or is a 'find' enough?
         for ( DocumentStore contributing : findStoresContainedBetween(from, to)) {
@@ -167,7 +179,8 @@ public class MultiplexingDocumentStore implements DocumentStore {
         }
         
         for ( String key : keys ) {
-            findOwnerStore(key).remove(collection, key);
+            findOwnerStore(key, collection, OnFailure.CALL_FIND_FOR_MATCHING_KEY)
+                .remove(collection, key);
         }
     }
 
@@ -182,7 +195,7 @@ public class MultiplexingDocumentStore implements DocumentStore {
         
         for ( Map.Entry<String, Map<Key, Condition>> entry : toRemove.entrySet()) {
             
-            DocumentStore ownerStore = findOwnerStore(entry.getKey());
+            DocumentStore ownerStore = findOwnerStore(entry.getKey(), collection, OnFailure.CALL_FIND_FOR_MATCHING_KEY);
             
             Map<String, Map<Key, Condition>> removals = storesToRemovals.get(ownerStore);
             if ( removals == null ) {
@@ -205,47 +218,38 @@ public class MultiplexingDocumentStore implements DocumentStore {
 
     @Override
     public <T extends Document> boolean create(Collection<T> collection, List<UpdateOp> updateOps) {
-        if ( collection != Collection.NODES) {
-            return root.create(collection, updateOps);
-        }
-        
+
         boolean created = false;
         
         for ( UpdateOp updateOp: updateOps ) {
-           created |= findOwnerStore(updateOp.getId()).create(collection, Collections.singletonList(updateOp));
+           created |= findOwnerStore(updateOp, collection, OnFailure.FAIL_FAST)
+                   .create(collection, Collections.singletonList(updateOp));
         }
         
         return created;
     }
-
+    
     @Override
     public <T extends Document> void update(Collection<T> collection, List<String> keys, UpdateOp updateOp) {
-        if ( collection != Collection.NODES) {
-            root.update(collection, keys, updateOp);
-            return;
-        }
         
         for ( String key : keys) {
-            findOwnerStore(key).update(collection, Collections.singletonList(key), updateOp);
+            findOwnerStore(key, collection, OnFailure.CALL_FIND_FOR_MATCHING_KEY)
+                .update(collection, Collections.singletonList(key), updateOp);
         }
     }
 
     @Override
     public <T extends Document> T createOrUpdate(Collection<T> collection, UpdateOp update) {
-        if ( collection != Collection.NODES) {
-            return root.createOrUpdate(collection, update);
-        }
         
-        return findOwnerStore(update.getId()).createOrUpdate(collection, update);
+        return findOwnerStore(update, collection, OnFailure.FAIL_FAST)
+                .createOrUpdate(collection, update);
     }
 
     @Override
     public <T extends Document> T findAndUpdate(Collection<T> collection, UpdateOp update) {
-        if ( collection != Collection.NODES) {
-            return root.findAndUpdate(collection, update);
-        }
         
-        return findOwnerStore(update.getId()).findAndUpdate(collection, update);
+        return findOwnerStore(update, collection, OnFailure.CALL_FIND_FOR_MATCHING_KEY)
+                .findAndUpdate(collection, update);
     }
 
     @Override
@@ -265,7 +269,7 @@ public class MultiplexingDocumentStore implements DocumentStore {
             return;
         }
         
-        findOwnerStore(key).invalidateCache(collection, key);
+        findOwnerStore(key, collection, OnFailure.CALL_FIND_FOR_MATCHING_KEY).invalidateCache(collection, key);
     }
     
     @Override
@@ -287,7 +291,8 @@ public class MultiplexingDocumentStore implements DocumentStore {
             return root.getIfCached(collection, key);
         }
 
-        return findOwnerStore(key).getIfCached(collection, key);
+        return findOwnerStore(key, collection, OnFailure.CALL_FIND_FOR_MATCHING_KEY)
+                .getIfCached(collection, key);
     }
 
     @Override
@@ -382,4 +387,17 @@ public class MultiplexingDocumentStore implements DocumentStore {
             return mountPath;
         }
     }
+    
+    /**
+     * Policy which indicates what action should be taken if a document's owning store can't be identified from the path
+     * 
+     * <p>Even if the DocumentNodeStore generally has a hierarchical usage pattern, some operations ( e.g. splitting documents ) 
+     * make use of non-hierarchical identifiers.</p>
+     *
+     */
+    private enum OnFailure {
+        
+        FAIL_FAST, CALL_FIND_FOR_MATCHING_KEY;
+    }
+
 }
