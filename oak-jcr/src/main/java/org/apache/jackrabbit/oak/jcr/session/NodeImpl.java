@@ -55,7 +55,6 @@ import javax.jcr.RepositoryException;
 import javax.jcr.UnsupportedRepositoryOperationException;
 import javax.jcr.Value;
 import javax.jcr.lock.Lock;
-import javax.jcr.lock.LockException;
 import javax.jcr.lock.LockManager;
 import javax.jcr.nodetype.ConstraintViolationException;
 import javax.jcr.nodetype.NodeDefinition;
@@ -1351,9 +1350,6 @@ public class NodeImpl<T extends NodeDelegate> extends ItemImpl<T> implements Nod
                 if (!isCheckedOut()) {
                     throw new VersionException(
                             "Cannot set property. Node is checked in.");
-                }
-                if ( isLocked()) {
-                    throw new LockException("Node is locked");
                 }
             }
             @Nonnull
