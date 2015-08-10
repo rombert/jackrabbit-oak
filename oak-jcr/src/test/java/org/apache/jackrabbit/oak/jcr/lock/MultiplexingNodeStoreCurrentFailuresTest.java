@@ -1,19 +1,31 @@
 package org.apache.jackrabbit.oak.jcr.lock;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
+import java.io.ByteArrayInputStream;
 import java.net.UnknownHostException;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
 
+import javax.jcr.ItemExistsException;
 import javax.jcr.LoginException;
 import javax.jcr.Node;
+import javax.jcr.PathNotFoundException;
 import javax.jcr.Repository;
 import javax.jcr.RepositoryException;
 import javax.jcr.Session;
 import javax.jcr.SimpleCredentials;
+import javax.jcr.lock.LockException;
+import javax.jcr.nodetype.ConstraintViolationException;
+import javax.jcr.nodetype.NoSuchNodeTypeException;
+import javax.jcr.observation.Event;
+import javax.jcr.observation.EventIterator;
+import javax.jcr.observation.EventListener;
+import javax.jcr.version.VersionException;
 
 import org.apache.jackrabbit.api.JackrabbitRepository;
 import org.apache.jackrabbit.oak.jcr.Jcr;
@@ -190,6 +202,53 @@ public class MultiplexingNodeStoreCurrentFailuresTest {
             }
         }
         
+    }
+    
+    @Test
+    public void recreateFileUnderMountPath() throws Exception {
+        // 1. create a folder
+        {
+            Node extra = getAdminSession().getRootNode().addNode("extra", "nt:folder");
+            extra.addNode("folder", "nt:folder");
+            extra.getSession().save();
+            extra.getSession().logout();
+        }
+
+        // 2. add a file
+        {
+            Node folder = getAdminSession().getNode("/extra/folder");
+            Node file = folder.addNode("first.txt", "nt:file");
+            Node contentNode = file.addNode("jcr:content","nt:resource");
+            contentNode.setProperty("jcr:data", new ByteArrayInputStream("hello, world".getBytes()));
+            
+            folder.getSession().save();
+            folder.getSession().logout();
+        }
+        
+        // 3. delete the file
+        {
+            Node file = getAdminSession().getNode("/extra/folder/first.txt"); 
+            file.remove();
+            file.getSession().save();
+            file.getSession().logout();
+        }
+        
+        // 4. re-add the file
+        {
+            Node folder = getAdminSession().getNode("/extra/folder");
+            Node file = folder.addNode("first.txt", "nt:file");
+            Node contentNode = file.addNode("jcr:content","nt:resource");
+            contentNode.setProperty("jcr:data", new ByteArrayInputStream("hello, world".getBytes()));
+            
+            folder.getSession().save();
+            folder.getSession().logout();
+        }
+        
+        // 5. verify that the file exists
+        {
+            Node file = getAdminSession().getNode("/extra/folder/first.txt");
+            assertEquals("nt:file", file.getPrimaryNodeType().getName());
+        }
     }
    
     /**
