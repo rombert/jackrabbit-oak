@@ -282,7 +282,6 @@ public class RDBDocumentStore implements DocumentStore {
         }
         return null;
     }
-    
     @Override
     public CacheInvalidationStats invalidateCache(Iterable<String> keys) {
         //TODO: optimize me
@@ -926,9 +925,11 @@ public class RDBDocumentStore implements DocumentStore {
     }
 
     private static String dumpTableMeta(int idType, String idTypeName, int idPrecision, int dataType, String dataTypeName,
-            int dataPrecision) {
-        return String.format("type of ID: %d (%s) precision %d (-> %s), type of DATA: %d (%s) precision %d", idType, idTypeName,
-                idPrecision, isBinaryType(idType) ? "binary" : "character", dataType, dataTypeName, dataPrecision);
+            int dataPrecision, int bdataType, String bdataTypeName, int bdataPrecision) {
+        return String
+                .format("type of ID: %d (%s) precision %d (-> %s), type of DATA: %d (%s) precision %d, type of BDATA: %d (%s) precision %d",
+                        idType, idTypeName, idPrecision, isBinaryType(idType) ? "binary" : "character", dataType, dataTypeName,
+                        dataPrecision, bdataType, bdataTypeName, bdataPrecision);
     }
 
     private void createTableFor(Connection con, Collection<? extends Document> col, List<String> tablesCreated,
@@ -943,7 +944,7 @@ public class RDBDocumentStore implements DocumentStore {
         ResultSet checkResultSet = null;
         Statement creatStatement = null;
         try {
-            checkStatement = con.prepareStatement("select ID, DATA from " + tableName + " where ID = ?");
+            checkStatement = con.prepareStatement("select ID, DATA, BDATA from " + tableName + " where ID = ?");
             checkStatement.setString(1, "0:/");
             checkResultSet = checkStatement.executeQuery();
 
@@ -953,7 +954,8 @@ public class RDBDocumentStore implements DocumentStore {
                 this.isIdBinary = isBinaryType(met.getColumnType(1));
                 this.dataLimitInOctets = met.getPrecision(2);
                 diagnostics.append(dumpTableMeta(met.getColumnType(1), met.getColumnTypeName(1), met.getPrecision(1),
-                        met.getColumnType(2), met.getColumnTypeName(2), met.getPrecision(2)));
+                        met.getColumnType(2), met.getColumnTypeName(2), met.getPrecision(2), met.getColumnType(3),
+                        met.getColumnTypeName(3), met.getPrecision(3)));
             }
             tablesPresent.add(tableName);
         } catch (SQLException ex) {
@@ -976,14 +978,15 @@ public class RDBDocumentStore implements DocumentStore {
                 tablesCreated.add(tableName);
 
                 if (col.equals(Collection.NODES)) {
-                    PreparedStatement pstmt = con.prepareStatement("select ID, DATA from " + tableName + " where ID = ?");
+                    PreparedStatement pstmt = con.prepareStatement("select ID, DATA, BDATA from " + tableName + " where ID = ?");
                     pstmt.setString(1, "0:/");
                     ResultSet rs = pstmt.executeQuery();
                     ResultSetMetaData met = rs.getMetaData();
                     this.isIdBinary = isBinaryType(met.getColumnType(1));
                     this.dataLimitInOctets = met.getPrecision(2);
                     diagnostics.append(dumpTableMeta(met.getColumnType(1), met.getColumnTypeName(1), met.getPrecision(1),
-                            met.getColumnType(2), met.getColumnTypeName(2), met.getPrecision(2)));
+                            met.getColumnType(2), met.getColumnTypeName(2), met.getPrecision(2), met.getColumnType(3),
+                            met.getColumnTypeName(3), met.getPrecision(3)));
                 }
             }
             catch (SQLException ex2) {
@@ -1431,6 +1434,7 @@ public class RDBDocumentStore implements DocumentStore {
             @Nonnull UpdateOp update, Long oldmodcount) {
         Connection connection = null;
         String tableName = getTable(collection);
+        String data = null;
         try {
             connection = this.ch.getRWConnection();
             Operation modOperation = update.getChanges().get(MODIFIEDKEY);
@@ -1460,7 +1464,7 @@ public class RDBDocumentStore implements DocumentStore {
                 }
             }
             if (!success) {
-                String data = SR.asString(document);
+                data = SR.asString(document);
                 success = dbUpdate(connection, tableName, document.getId(), modified, hasBinary, deletedOnce, modcount, cmodcount,
                         oldmodcount, data);
                 connection.commit();
@@ -1468,7 +1472,15 @@ public class RDBDocumentStore implements DocumentStore {
             return success;
         } catch (SQLException ex) {
             this.ch.rollbackConnection(connection);
-            throw new DocumentStoreException(ex);
+            String addDiags = "";
+            if (RDBJDBCTools.matchesSQLState(ex, "22", "72")) {
+                byte[] bytes = asBytes(data);
+                addDiags = String.format(" (DATA size in Java characters: %d, in octets: %d, computed character limit: %d)",
+                        data.length(), bytes.length, this.dataLimitInOctets / CHAR2OCTETRATIO);
+            }
+            String message = String.format("Update for %s failed%s", document.getId(), addDiags);
+            LOG.debug(message, ex);
+            throw new DocumentStoreException(message, ex);
         } finally {
             this.ch.closeConnection(connection);
         }
@@ -1518,14 +1530,44 @@ public class RDBDocumentStore implements DocumentStore {
             for (T doc : documents) {
                 ids.add(doc.getId());
             }
-            LOG.debug("insert of " + ids + " failed", ex);
+            String message = String.format("insert of %s failed", ids);
+            LOG.debug(message, ex);
 
             // collect additional exceptions
             String messages = LOG.isDebugEnabled() ? RDBJDBCTools.getAdditionalMessages(ex) : "";
+
+            // see whether a DATA error was involved
+            boolean dataRelated = false;
+            SQLException walk = ex;
+            while (walk != null && !dataRelated) {
+                dataRelated = RDBJDBCTools.matchesSQLState(walk, "22", "72");
+                walk = walk.getNextException();
+            }
+            if (dataRelated) {
+                String id = null;
+                int longest = 0, longestChars = 0;
+
+                for (Document d : documents) {
+                    String data = SR.asString(d);
+                    byte bytes[] = asBytes(data);
+                    if (bytes.length > longest) {
+                        longest = bytes.length;
+                        longestChars = data.length();
+                        id = d.getId();
+                    }
+                }
+
+                String m = String
+                        .format(" (potential cause: long data for ID %s - longest octet DATA size in Java characters: %d, in octets: %d, computed character limit: %d)",
+                                id, longest, longestChars, this.dataLimitInOctets / CHAR2OCTETRATIO);
+                messages += m;
+            }
+
             if (!messages.isEmpty()) {
                 LOG.debug("additional diagnostics: " + messages);
             }
-            throw new DocumentStoreException(ex);
+
+            throw new DocumentStoreException(message, ex);
         } finally {
             this.ch.closeConnection(connection);
         }

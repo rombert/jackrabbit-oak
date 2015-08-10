@@ -20,6 +20,7 @@ package org.apache.jackrabbit.oak.plugins.segment;
 
 import static org.apache.commons.io.FileUtils.byteCountToDisplaySize;
 import static org.apache.jackrabbit.oak.plugins.blob.datastore.SharedDataStoreUtils.SharedStoreRecordType.REPOSITORY;
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
 import java.io.ByteArrayInputStream;
@@ -33,6 +34,8 @@ import java.util.List;
 import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.Callable;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
 import javax.annotation.Nonnull;
@@ -88,7 +91,10 @@ public class SegmentDataStoreBlobGCTest {
 
     protected SegmentNodeStore getNodeStore(BlobStore blobStore) throws IOException {
         if (nodeStore == null) {
-            store = new FileStore(blobStore, getWorkDir(), 256, false);
+            FileStore.Builder builder = FileStore.newFileStore(getWorkDir())
+                    .withBlobStore(blobStore).withMaxFileSize(256)
+                    .withCacheSize(64).withMemoryMapping(false);
+            store = builder.create();
             CompactionStrategy compactionStrategy =
                 new CompactionStrategy(false, true,
                     CompactionStrategy.CleanupType.CLEAN_OLD, 0, CompactionStrategy.MEMORY_THRESHOLD_DEFAULT) {
@@ -200,14 +206,15 @@ public class SegmentDataStoreBlobGCTest {
                 new ByteArrayInputStream(new byte[0]),
                 REPOSITORY.getNameFromId(repoId));
         }
-
+        
+        ThreadPoolExecutor executor = (ThreadPoolExecutor) Executors.newFixedThreadPool(10);
         MarkSweepGarbageCollector gc = new MarkSweepGarbageCollector(
                 new SegmentBlobReferenceRetriever(store.getTracker()),
-                    (GarbageCollectableBlobStore) store.getBlobStore(),
-                    MoreExecutors.sameThreadExecutor(),
+                    (GarbageCollectableBlobStore) store.getBlobStore(), executor,
                     "./target", 2048, 0, repoId);
         gc.collectGarbage(false);
 
+        assertEquals(0, executor.getTaskCount());
         Set<String> existingAfterGC = iterate();
         log.info("{} blobs that should have remained after gc : {}", remaining.size(), remaining);
         log.info("{} blobs existing after gc : {}", existingAfterGC.size(), existingAfterGC);

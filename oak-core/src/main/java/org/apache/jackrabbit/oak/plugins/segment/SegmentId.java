@@ -16,6 +16,9 @@
  */
 package org.apache.jackrabbit.oak.plugins.segment;
 
+import static java.lang.Integer.getInteger;
+import static java.lang.Integer.rotateLeft;
+
 import java.util.UUID;
 
 import org.slf4j.Logger;
@@ -31,6 +34,21 @@ public class SegmentId implements Comparable<SegmentId> {
     /** Logger instance */
     private static final Logger log = LoggerFactory.getLogger(SegmentId.class);
 
+    /**
+     * Sample rate bit mask of {@link SegmentTracker#segmentCache}. Lower values
+     * will cause more frequent accesses to that cache instead of the short
+     * circuit through {@link SegmentId#segment}. Access to that cache is slower
+     * but allows tracking access statistics. Should be 2^x - 1 (for example
+     * 1023, 255, 15,...).
+     */
+    private static final int SEGMENT_CACHE_SAMPLE_MASK = getInteger("SegmentCacheSampleRate", 1023);
+
+    /**
+     * The initial random value for the pseudo random number generator. Initial
+     * values of 0 - 0xffff will ensure a long period, but other values don't.
+     */
+    private static volatile int random = (int) (System.currentTimeMillis() & 0xffff);
+    
     /**
      * Checks whether this is a data segment identifier.
      *
@@ -51,8 +69,10 @@ public class SegmentId implements Comparable<SegmentId> {
     /**
      * A reference to the segment object, if it is available in memory. It is
      * used for fast lookup. The segment tracker will set or reset this field.
+     * <p>
+     * Needs to be volatile so {@link #setSegment(Segment)} doesn't need to
+     * be synchronized as this would lead to deadlocks.
      */
-    // TODO: possibly we could remove the volatile
     private volatile Segment segment;
 
     private SegmentId(SegmentTracker tracker, long msb, long lsb,
@@ -98,22 +118,42 @@ public class SegmentId implements Comparable<SegmentId> {
         return lsb;
     }
 
+    /**
+     * Get a random integer. A fast, but lower quality pseudo random number
+     * generator is used.
+     * 
+     * @return a random value.
+     */
+    private static int randomInt() {
+        // There is a race here on concurrent access. However, given the usage the resulting
+        // bias seems preferable to the performance penalty of synchronization
+        return random = 0xc3e157c1 - rotateLeft(random, 19);
+    }
+
     public Segment getSegment() {
+        // Sample the segment cache once in a while to get some cache hit/miss statistics
+        if ((randomInt() & SEGMENT_CACHE_SAMPLE_MASK) == 0) {
+            Segment segment = tracker.getCachedSegment(this);
+            if (segment != null) {
+                return segment;
+            }
+        }
+
+        // Fall back to short circuit via this.segment if not in the cache
         Segment segment = this.segment;
         if (segment == null) {
             synchronized (this) {
                 segment = this.segment;
                 if (segment == null) {
                     log.debug("Loading segment {}", this);
-                    segment = tracker.getSegment(this);
+                    segment = tracker.readSegment(this);
                 }
             }
         }
-        segment.access();
         return segment;
     }
 
-    synchronized void setSegment(Segment segment) {
+    void setSegment(Segment segment) {
         this.segment = segment;
     }
 

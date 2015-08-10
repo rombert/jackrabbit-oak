@@ -242,15 +242,27 @@ public class DocumentNodeStoreTest {
         final DocumentMK mk = new DocumentMK.Builder()
                 .setDocumentStore(docStore).setAsyncDelay(0).open();
         final DocumentNodeStore store = mk.getNodeStore();
-        final String head = mk.commit("/", "+\"foo\":{}+\"bar\":{}", null, null);
+
+        NodeBuilder builder = store.getRoot().builder();
+        builder.child("deletedNode");
+        builder.child("updateNode").setProperty("foo", "bar");
+        merge(store, builder);
+
+        builder = store.getRoot().builder();
+        builder.child("deletedNode").remove();
+        merge(store, builder);
+
+        final Revision head = store.getHeadRevision();
+
         Thread writer = new Thread(new Runnable() {
             @Override
             public void run() {
                 try {
                     Revision r = store.newRevision();
-                    Commit c = new Commit(store, r, Revision.fromString(head), null);
-                    c.addNode(new DocumentNodeState(store, "/foo/node", r));
-                    c.addNode(new DocumentNodeState(store, "/bar/node", r));
+                    Commit c = new Commit(store, r, head, null);
+                    c.addNode(new DocumentNodeState(store, "/newConflictingNode", r));
+                    c.addNode(new DocumentNodeState(store, "/deletedNode", r));
+                    c.updateProperty("/updateNode", "foo", "baz");
                     c.apply();
                 } catch (DocumentStoreException e) {
                     exceptions.add(e);
@@ -265,21 +277,35 @@ public class DocumentNodeStoreTest {
         created.acquireUninterruptibly();
         // commit will succeed and add collision marker to writer commit
         Revision r = store.newRevision();
-        Commit c = new Commit(store, r, Revision.fromString(head), null);
-        c.addNode(new DocumentNodeState(store, "/foo/node", r));
-        c.addNode(new DocumentNodeState(store, "/bar/node", r));
+        Commit c = new Commit(store, r, head, null);
+        c.addNode(new DocumentNodeState(store, "/newConflictingNode", r));
+        c.addNode(new DocumentNodeState(store, "/newNonConflictingNode", r));
         c.apply();
         // allow writer to continue
         s.release();
         writer.join();
         assertEquals("expected exception", 1, exceptions.size());
 
-        String id = Utils.getIdFromPath("/foo/node");
+        String id = Utils.getIdFromPath("/newConflictingNode");
         NodeDocument doc = docStore.find(NODES, id);
         assertNotNull("document with id " + id + " does not exist", doc);
-        id = Utils.getIdFromPath("/bar/node");
+        assertTrue("document with id " + id + " should get _deletedOnce marked due to rollback",
+                doc.wasDeletedOnce());
+
+        id = Utils.getIdFromPath("/newNonConflictingNode");
         doc = docStore.find(NODES, id);
-        assertNotNull("document with id " + id + " does not exist", doc);
+        assertNull("document with id " + id + " must not have _deletedOnce",
+                doc.get(NodeDocument.DELETED_ONCE));
+
+        id = Utils.getIdFromPath("/deletedNode");
+        doc = docStore.find(NODES, id);
+        assertTrue("document with id " + id + " should get _deletedOnce marked due to rollback",
+                doc.wasDeletedOnce());
+
+        id = Utils.getIdFromPath("/updateNode");
+        doc = docStore.find(NODES, id);
+        assertNull("document with id " + id + " must not have _deletedOnce despite rollback",
+                doc.get(NodeDocument.DELETED_ONCE));
 
         mk.dispose();
     }
@@ -1887,6 +1913,54 @@ public class DocumentNodeStoreTest {
         for (String s : failure) {
             fail(s);
         }
+    }
+
+    @Test
+    public void failFastOnBranchConflict() throws Exception {
+        final AtomicInteger mergeAttempts = new AtomicInteger();
+        MemoryDocumentStore store = new MemoryDocumentStore() {
+            @Override
+            public <T extends Document> T findAndUpdate(Collection<T> collection,
+                                                        UpdateOp update) {
+                for (Key k : update.getConditions().keySet()) {
+                    if (k.getName().equals(NodeDocument.COLLISIONS)) {
+                        mergeAttempts.incrementAndGet();
+                        break;
+                    }
+                }
+                return super.findAndUpdate(collection, update);
+            }
+        };
+        DocumentNodeStore ds = new DocumentMK.Builder()
+                .setDocumentStore(store)
+                .setAsyncDelay(0).getNodeStore();
+
+        DocumentNodeState root = ds.getRoot();
+        DocumentNodeStoreBranch b = ds.createBranch(root);
+        // branch state is now Unmodified
+        NodeBuilder builder = root.builder();
+        builder.child("foo");
+        b.setRoot(builder.getNodeState());
+        // branch state is now InMemory
+        builder.child("bar").setProperty("p", "foo");
+        b.setRoot(builder.getNodeState());
+        // branch state is now Persisted
+
+        // create conflict with persisted branch
+        NodeBuilder nb = ds.getRoot().builder();
+        nb.child("bar").setProperty("p", "bar");
+        merge(ds, nb);
+
+        mergeAttempts.set(0);
+        try {
+            b.merge(EmptyHook.INSTANCE, CommitInfo.EMPTY);
+            fail("must fail with CommitFailedException");
+        } catch (CommitFailedException e) {
+            // expected
+        }
+
+        assertTrue("too many merge attempts: " + mergeAttempts.get(),
+                mergeAttempts.get() <= 1);
     }
 
     private static DocumentNodeState asDocumentNodeState(NodeState state) {

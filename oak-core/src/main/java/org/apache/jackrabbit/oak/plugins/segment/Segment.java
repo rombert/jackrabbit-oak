@@ -36,7 +36,10 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.ConcurrentMap;
 
+import javax.annotation.Nullable;
+
 import com.google.common.base.Charsets;
+import com.google.common.base.Function;
 import org.apache.jackrabbit.oak.api.PropertyState;
 import org.apache.jackrabbit.oak.api.Type;
 import org.apache.jackrabbit.oak.plugins.blob.ReferenceCollector;
@@ -97,6 +100,15 @@ public class Segment {
      */
     public static final int MEDIUM_LIMIT = (1 << (16 - 2)) + SMALL_LIMIT;
 
+    /**
+     * Maximum size of small blob IDs. A small blob ID is stored in a value
+     * record whose length field contains the pattern "1110" in its most
+     * significant bits. Since two bytes are used to store both the bit pattern
+     * and the actual length of the blob ID, a maximum of 2^12 values can be
+     * stored in the length field.
+     */
+    public static final int BLOB_ID_SMALL_LIMIT = 1 << 12;
+
     public static final int REF_COUNT_OFFSET = 5;
 
     static final int ROOT_COUNT_OFFSET = 6;
@@ -123,8 +135,25 @@ public class Segment {
     /**
      * String records read from segment. Used to avoid duplicate
      * copies and repeated parsing of the same strings.
+     *
+     * @deprecated  Superseded by {@link #stringCache} unless
+     * {@link SegmentTracker#DISABLE_STRING_CACHE} is {@code true}.
      */
-    private final ConcurrentMap<Integer, String> strings = newConcurrentMap();
+    @Deprecated
+    private final ConcurrentMap<Integer, String> strings;
+
+    private final Function<Integer, String> loadString = new Function<Integer, String>() {
+        @Nullable
+        @Override
+        public String apply(Integer offset) {
+            return loadString(offset);
+        }
+    };
+
+    /**
+     * Cache for string records or {@code null} if {@link #strings} is used for caching
+     */
+    private final StringCache stringCache;
 
     /**
      * Template records read from segment. Used to avoid duplicate
@@ -132,7 +161,7 @@ public class Segment {
      */
     private final ConcurrentMap<Integer, Template> templates = newConcurrentMap();
 
-    private volatile long accessed = 0;
+    private volatile long accessed;
 
     /**
      * Decode a 4 byte aligned segment offset.
@@ -159,6 +188,13 @@ public class Segment {
     public Segment(SegmentTracker tracker, SegmentId id, ByteBuffer data, SegmentVersion version) {
         this.tracker = checkNotNull(tracker);
         this.id = checkNotNull(id);
+        if (tracker.getStringCache() == null) {
+            strings = newConcurrentMap();
+            stringCache = null;
+        } else {
+            strings = null;
+            stringCache = tracker.getStringCache();
+        }
         this.data = checkNotNull(data);
         if (id.isDataSegmentId()) {
             byte segmentVersion = data.get(3);
@@ -178,19 +214,17 @@ public class Segment {
     Segment(SegmentTracker tracker, byte[] buffer) {
         this.tracker = checkNotNull(tracker);
         this.id = tracker.newDataSegmentId();
+        if (tracker.getStringCache() == null) {
+            strings = newConcurrentMap();
+            stringCache = null;
+        } else {
+            strings = null;
+            stringCache = tracker.getStringCache();
+        }
         this.data = ByteBuffer.wrap(checkNotNull(buffer));
         this.refids = new SegmentId[SEGMENT_REFERENCE_LIMIT + 1];
         this.refids[0] = id;
         this.version = SegmentVersion.fromByte(buffer[3]);
-    }
-
-    void access() {
-        accessed++;
-    }
-
-    boolean accessed() {
-        accessed >>>= 1;
-        return accessed != 0;
     }
 
     SegmentVersion getSegmentVersion() {
@@ -367,12 +401,18 @@ public class Segment {
     }
 
     private String readString(int offset) {
-        String string = strings.get(offset);
-        if (string == null) {
-            string = loadString(offset);
-            strings.putIfAbsent(offset, string); // only keep the first copy
+        if (stringCache != null) {
+            long msb = id.getMostSignificantBits();
+            long lsb = id.getLeastSignificantBits();
+            return stringCache.getString(msb, lsb, offset, loadString);
+        } else {
+            String string = strings.get(offset);
+            if (string == null) {
+                string = loadString(offset);
+                strings.putIfAbsent(offset, string); // only keep the first copy
+            }
+            return string;
         }
-        return string;
     }
 
     private String loadString(int offset) {

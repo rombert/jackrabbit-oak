@@ -22,6 +22,7 @@ import static com.google.common.base.Preconditions.checkNotNull;
 import static org.apache.jackrabbit.oak.commons.PropertiesUtil.toBoolean;
 import static org.apache.jackrabbit.oak.commons.PropertiesUtil.toInteger;
 import static org.apache.jackrabbit.oak.commons.PropertiesUtil.toLong;
+import static org.apache.jackrabbit.oak.osgi.OsgiUtil.lookupFrameworkThenConfiguration;
 import static org.apache.jackrabbit.oak.plugins.document.DocumentMK.Builder.DEFAULT_CHILDREN_CACHE_PERCENTAGE;
 import static org.apache.jackrabbit.oak.plugins.document.DocumentMK.Builder.DEFAULT_DIFF_CACHE_PERCENTAGE;
 import static org.apache.jackrabbit.oak.plugins.document.DocumentMK.Builder.DEFAULT_DOC_CHILDREN_CACHE_PERCENTAGE;
@@ -35,6 +36,7 @@ import java.util.Dictionary;
 import java.util.HashMap;
 import java.util.Hashtable;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
@@ -236,7 +238,7 @@ public class DocumentNodeStoreService {
             if (type == null) {
                 return MONGO;
             }
-            return valueOf(type.toUpperCase());
+            return valueOf(type.toUpperCase(Locale.ROOT));
         }
     }
 
@@ -640,14 +642,7 @@ public class DocumentNodeStoreService {
     }
 
     private Object prop(String propName, String fwkPropName) {
-        //Prefer framework property first
-        Object value = context.getBundleContext().getProperty(fwkPropName);
-        if (value != null) {
-            return value;
-        }
-
-        //Fallback to one from config
-        return context.getProperties().get(propName);
+        return lookupFrameworkThenConfiguration(context, propName, fwkPropName);
     }
 
     private static String[] getMetadata(DocumentStore ds) {

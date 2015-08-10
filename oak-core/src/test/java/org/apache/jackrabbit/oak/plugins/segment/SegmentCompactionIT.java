@@ -21,11 +21,13 @@ package org.apache.jackrabbit.oak.plugins.segment;
 
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.collect.Iterables.get;
+import static com.google.common.collect.Lists.newArrayList;
 import static com.google.common.collect.Sets.newConcurrentHashSet;
 import static com.google.common.util.concurrent.Futures.addCallback;
 import static com.google.common.util.concurrent.Futures.immediateCancelledFuture;
 import static com.google.common.util.concurrent.MoreExecutors.listeningDecorator;
 import static java.io.File.createTempFile;
+import static java.lang.Boolean.getBoolean;
 import static java.lang.Integer.MAX_VALUE;
 import static java.lang.String.valueOf;
 import static java.lang.System.getProperty;
@@ -49,6 +51,7 @@ import java.io.StringWriter;
 import java.lang.management.ManagementFactory;
 import java.util.Date;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.Callable;
@@ -71,6 +74,7 @@ import com.google.common.util.concurrent.ListeningScheduledExecutorService;
 import org.apache.jackrabbit.oak.api.Blob;
 import org.apache.jackrabbit.oak.api.CommitFailedException;
 import org.apache.jackrabbit.oak.api.PropertyState;
+import org.apache.jackrabbit.oak.cache.CacheStats;
 import org.apache.jackrabbit.oak.commons.jmx.AnnotatedStandardMBean;
 import org.apache.jackrabbit.oak.plugins.segment.compaction.CompactionStrategy;
 import org.apache.jackrabbit.oak.plugins.segment.compaction.DefaultCompactionStrategyMBean;
@@ -102,7 +106,7 @@ import org.slf4j.LoggerFactory;
  * TODO Leverage longeivity test support from OAK-2771 once we have it.
  */
 public class SegmentCompactionIT {
-    private static final boolean PERSIST_COMPACTION_MAP = Boolean.getBoolean("persist-compaction-map");
+    private static final boolean PERSIST_COMPACTION_MAP = !getBoolean("in-memory-compaction-map");
 
     /** Only run if explicitly asked to via -Dtest=SegmentCompactionIT */
     private static final boolean ENABLED =
@@ -211,12 +215,6 @@ public class SegmentCompactionIT {
             InstanceAlreadyExistsException, MBeanRegistrationException {
         assumeTrue(ENABLED);
 
-        mBeanRegistration = new CompositeRegistration(
-            registerMBean(segmentCompactionMBean, new ObjectName("IT:TYPE=Segment Compaction")),
-            registerMBean(new DefaultCompactionStrategyMBean(compactionStrategy),
-                    new ObjectName("IT:TYPE=Compaction Strategy")),
-            registerMBean(fileStoreGCMonitor, new ObjectName("IT:TYPE=GC Monitor")));
-
         scheduler.scheduleAtFixedRate(new Runnable() {
             @Override
             public void run() {
@@ -228,10 +226,30 @@ public class SegmentCompactionIT {
         directory.delete();
         directory.mkdir();
 
-        fileStore = newFileStore(directory).withGCMonitor(gcMonitor).create();
+        fileStore = newFileStore(directory)
+                .withMemoryMapping(true)
+                .withGCMonitor(gcMonitor)
+                .create();
         nodeStore = new SegmentNodeStore(fileStore);
         compactionStrategy.setPersistCompactionMap(PERSIST_COMPACTION_MAP);
         fileStore.setCompactionStrategy(compactionStrategy);
+
+        CacheStats segmentCacheStats = fileStore.getTracker().getSegmentCacheStats();
+        CacheStats stringCacheStats = fileStore.getTracker().getStringCacheStats();
+        List<Registration> registrations = newArrayList();
+        registrations.add(registerMBean(segmentCompactionMBean,
+                new ObjectName("IT:TYPE=Segment Compaction")));
+        registrations.add(registerMBean(new DefaultCompactionStrategyMBean(compactionStrategy),
+                new ObjectName("IT:TYPE=Compaction Strategy")));
+        registrations.add(registerMBean(fileStoreGCMonitor,
+                new ObjectName("IT:TYPE=GC Monitor")));
+        registrations.add(registerMBean(segmentCacheStats,
+                new ObjectName("IT:TYPE=" + segmentCacheStats.getName())));
+        if (stringCacheStats != null) {
+            registrations.add(registerMBean(stringCacheStats,
+                    new ObjectName("IT:TYPE=" + stringCacheStats.getName())));
+        }
+        mBeanRegistration = new CompositeRegistration(registrations);
     }
 
     @After
