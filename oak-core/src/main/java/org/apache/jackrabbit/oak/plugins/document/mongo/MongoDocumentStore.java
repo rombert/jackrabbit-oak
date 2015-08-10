@@ -846,7 +846,7 @@ public class MongoDocumentStore implements DocumentStore {
                 oldDoc.seal();
             } else if (upsert) {
                 if (collection == Collection.NODES) {
-                    NodeDocument doc = (NodeDocument) collection.newDocument(this);
+                    NodeDocument doc = (NodeDocument) customiser.newDocument(collection); 
                     UpdateUtils.applyChanges(doc, updateOp, comparator);
                     addToCache(doc);
                 }
