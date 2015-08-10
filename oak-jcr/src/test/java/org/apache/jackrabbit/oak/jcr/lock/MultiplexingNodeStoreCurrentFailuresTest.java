@@ -192,39 +192,6 @@ public class MultiplexingNodeStoreCurrentFailuresTest {
         
     }
    
-    @Test
-    public void splitDocument() throws Exception {
-        
-        {
-            Session session = getAdminSession();
-            try {
-                
-                Node node = session.getRootNode().addNode("bla");
-                
-                for ( int i = 0 ; i < 1000 ; i++ ) {
-                    node.setProperty("prop- " + i, largeString());
-                    session.save();
-                }
-                
-            } finally {
-                session.logout();
-            }
-        }
-        
-        nodeStore.runBackgroundOperations();
-    }
-    
-    private String largeString() {
-        
-        StringBuilder out = new StringBuilder();
-        
-        for ( int i = 0 ; i < 0xfff; i++ ) {
-            out.append('a' + ( i % ( 'z' - 'a') ) );
-        }
-        
-        return out.toString();
-    }
-
     /**
      * Reinitialises the repository instance, optionally waiting for <tt>wait</tt> milliseconds
      * 
