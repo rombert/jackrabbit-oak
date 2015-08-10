@@ -35,6 +35,7 @@ import java.util.ArrayList;
 import java.util.Dictionary;
 import java.util.HashMap;
 import java.util.Hashtable;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -42,6 +43,10 @@ import java.util.concurrent.TimeUnit;
 
 import javax.sql.DataSource;
 
+import com.google.common.base.Preconditions;
+import com.google.common.base.Splitter;
+import com.google.common.collect.Iterables;
+import com.google.common.collect.Maps;
 import com.mongodb.DB;
 import com.mongodb.MongoClient;
 import com.mongodb.MongoClientOptions;
@@ -53,6 +58,7 @@ import org.apache.felix.scr.annotations.ConfigurationPolicy;
 import org.apache.felix.scr.annotations.Deactivate;
 import org.apache.felix.scr.annotations.Property;
 import org.apache.felix.scr.annotations.PropertyOption;
+import org.apache.felix.scr.annotations.PropertyUnbounded;
 import org.apache.felix.scr.annotations.Reference;
 import org.apache.felix.scr.annotations.ReferenceCardinality;
 import org.apache.felix.scr.annotations.ReferencePolicy;
@@ -228,7 +234,15 @@ public class DocumentNodeStoreService {
                     + "Default is " + DEFAULT_JOURNAL_GC_MAX_AGE_MILLIS
     )
     private static final String PROP_JOURNAL_GC_MAX_AGE_MILLIS = "journalGCMaxAge";
-
+    
+    @Property(value = "", 
+            label="Mounts (optional)",
+            description="Mounted stores, in the '/path:collection_name' format. Only supported for MongoDB "
+                    + "at the moment. Collections will be created in the MongoDB instance configured for "
+                    + "this DocumentNodeStore instance.", 
+            unbounded = PropertyUnbounded.ARRAY)
+    private static final String PROP_MOUNTS = "mounts";
+    
     private static final long MB = 1024 * 1024;
 
     private static enum DocumentStoreType {
@@ -362,6 +376,7 @@ public class DocumentNodeStoreService {
         String persistentCache = PropertiesUtil.toString(prop(PROP_PERSISTENT_CACHE), DEFAULT_PERSISTENT_CACHE);
         int cacheSegmentCount = toInteger(prop(PROP_CACHE_SEGMENT_COUNT), DEFAULT_CACHE_SEGMENT_COUNT);
         int cacheStackMoveDistance = toInteger(prop(PROP_CACHE_STACK_MOVE_DISTANCE), DEFAULT_CACHE_STACK_MOVE_DISTANCE);
+        String[] rawMounts = PropertiesUtil.toStringArray(context.getProperties().get(PROP_MOUNTS), new String[0]);
 
         DocumentMK.Builder mkBuilder =
                 new DocumentMK.Builder().
@@ -402,6 +417,21 @@ public class DocumentNodeStoreService {
         } else {
             MongoClientOptions.Builder builder = MongoConnection.getDefaultBuilder();
             MongoClientURI mongoURI = new MongoClientURI(uri, builder);
+            
+            Map<String, String> mounts = Maps.newLinkedHashMap();
+            for ( String rawMount : rawMounts ) {
+                List<String> split = Splitter.on(':').splitToList(rawMount);
+                Preconditions.checkArgument(split.size() == 2, "Invalid mount specification: '%s'", rawMount);
+                String path = split.get(0).trim();
+                String collection = split.get(1).trim();
+                
+                Preconditions.checkArgument(!path.isEmpty(), "path is empty for mount specification '%s'", rawMount);
+                Preconditions.checkArgument(!collection.isEmpty(), "collection is empty for mount specification '%s'", rawMount);
+                Preconditions.checkArgument(path.length() > 1 && path.charAt(0) == '/', "path '%s' must be absolute and different from the root path", path);
+
+                mounts.put(path, collection);
+                
+            }
 
             if (log.isInfoEnabled()) {
                 // Take care around not logging the uri directly as it
@@ -409,6 +439,9 @@ public class DocumentNodeStoreService {
                 log.info("Starting DocumentNodeStore with host={}, db={}, cache size (MB)={}, persistentCache={}, " +
                                 "'changes' collection size (MB)={}, blobCacheSize (MB)={}, maxReplicationLagInSecs={}",
                         mongoURI.getHosts(), db, cacheSize, persistentCache, changesSize, blobCacheSize, maxReplicationLagInSecs);
+                if ( mounts.size() > 0 ) {
+                    log.info("Configuring mounts: {}", mounts);
+                }
                 log.info("Mongo Connection details {}", MongoConnection.toString(mongoURI.getOptions()));
             }
 
@@ -416,6 +449,9 @@ public class DocumentNodeStoreService {
             DB mongoDB = client.getDB(db);
 
             mkBuilder.setMaxReplicationLag(maxReplicationLagInSecs, TimeUnit.SECONDS);
+            for ( Map.Entry<String, String> entry : mounts.entrySet() ) {
+                mkBuilder.addMongoDbMount(entry.getKey(), mongoDB, entry.getValue());
+            }
             mkBuilder.setMongoDB(mongoDB, changesSize, blobCacheSize);
 
             log.info("Connected to database {}", mongoDB);
