@@ -18,21 +18,15 @@
  */
 package org.apache.jackrabbit.oak;
 
-import java.util.ArrayList;
-import java.util.List;
-
-import org.apache.jackrabbit.oak.plugins.document.Collection;
-import org.apache.jackrabbit.oak.plugins.document.Document;
 import org.apache.jackrabbit.oak.plugins.document.DocumentMK;
 import org.apache.jackrabbit.oak.plugins.document.DocumentNodeStore;
+import org.apache.jackrabbit.oak.plugins.document.DocumentStore;
 import org.apache.jackrabbit.oak.plugins.document.MultiplexingDocumentStore;
 import org.apache.jackrabbit.oak.plugins.document.memory.MemoryDocumentStore;
 import org.apache.jackrabbit.oak.plugins.memory.MemoryNodeStore;
 import org.apache.jackrabbit.oak.plugins.segment.SegmentNodeStore;
 import org.apache.jackrabbit.oak.plugins.segment.memory.MemoryStore;
 import org.apache.jackrabbit.oak.spi.state.NodeStore;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * NodeStore fixture for parametrized tests.
@@ -74,48 +68,7 @@ public abstract class NodeStoreFixture {
         }
     };
     
-    static class SpyingMemoryNodeStore extends MemoryDocumentStore {
-        int calls;
-
-        private final Logger log = LoggerFactory.getLogger(getClass());
-        final String mountPath;
-        
-        SpyingMemoryNodeStore(String mountPath) {
-            this.mountPath = mountPath;
-        }
-        
-        void complainIfNoCalls() {
-            if(calls == 0) {
-                log.warn("{}: find not called at path {}", getClass().getSimpleName(), mountPath);
-            }
-        }
-        
-        @Override
-        public <T extends Document> T find(Collection<T> collection,
-                String key, int maxCacheAge) {
-            calls++;
-            return super.find(collection, key, maxCacheAge);
-        }
-
-        @Override
-        public <T extends Document> T find(Collection<T> collection, String key) {
-            calls++;
-            return super.find(collection, key);
-        }
-        
-        
-    };
-
     public static final NodeStoreFixture MEMORY_MULTI_NS = new NodeStoreFixture() {
-        private final SpyingMemoryNodeStore rootStore = new SpyingMemoryNodeStore("/");
-        private final List<SpyingMemoryNodeStore> mounts = new ArrayList<SpyingMemoryNodeStore>();
-        
-        {
-            //mounts.add(new SpyingMemoryNodeStore("/x"));
-            //mounts.add(new SpyingMemoryNodeStore("/jcr:system"));
-            //mounts.add(new SpyingMemoryNodeStore("/salut"));
-        }
-        
         @Override
         public String toString() {
             return "Multiplexing MemoryNodeStore Fixture";
@@ -123,20 +76,18 @@ public abstract class NodeStoreFixture {
 
         @Override
         public NodeStore createNodeStore() {
-            final MultiplexingDocumentStore.Builder b = new MultiplexingDocumentStore.Builder();
-            b.root(rootStore);
-            for(SpyingMemoryNodeStore s : mounts) {
-                b.mount(s.mountPath, s);
-            }
-            return new DocumentMK.Builder().setDocumentStore(b.build()).getNodeStore();
+            final DocumentStore ds = new MultiplexingDocumentStore.Builder()
+            .root(new MemoryDocumentStore())
+            // TODO check which paths to use so that the stores are actually used by tests
+            .mount("/jcr:system", new MemoryDocumentStore())
+            .mount("/x", new MemoryDocumentStore())
+            .mount("/test", new MemoryDocumentStore())
+            .build();
+            return new DocumentMK.Builder().setDocumentStore(ds).getNodeStore();
         }
 
         @Override
         public void dispose(NodeStore nodeStore) {
-            rootStore.complainIfNoCalls();
-            for(SpyingMemoryNodeStore s : mounts) {
-                s.complainIfNoCalls();
-            }
             if (nodeStore instanceof DocumentNodeStore) {
                 ((DocumentNodeStore) nodeStore).dispose();
             }
