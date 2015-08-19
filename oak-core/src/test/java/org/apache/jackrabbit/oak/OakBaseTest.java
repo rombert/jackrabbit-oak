@@ -18,6 +18,7 @@ package org.apache.jackrabbit.oak;
 
 import static org.apache.jackrabbit.oak.commons.FixturesHelper.Fixture.DOCUMENT_NS;
 import static org.apache.jackrabbit.oak.commons.FixturesHelper.Fixture.MEMORY_NS;
+import static org.apache.jackrabbit.oak.commons.FixturesHelper.Fixture.MEMORY_MULTI_NS;
 import static org.apache.jackrabbit.oak.commons.FixturesHelper.Fixture.SEGMENT_MK;
 
 import java.util.ArrayList;
@@ -55,6 +56,9 @@ public abstract class OakBaseTest {
         }
         if (FIXTURES.contains(MEMORY_NS)) {
             result.add(new Object[] { NodeStoreFixture.MEMORY_NS });
+        }
+        if (FIXTURES.contains(MEMORY_MULTI_NS)) {
+            result.add(new Object[] { NodeStoreFixture.MEMORY_MULTI_NS });
         }
         return result;
     }
