@@ -111,9 +111,9 @@ public abstract class NodeStoreFixture {
         private final List<SpyingMemoryNodeStore> mounts = new ArrayList<SpyingMemoryNodeStore>();
         
         {
-            mounts.add(new SpyingMemoryNodeStore("/x"));
-            mounts.add(new SpyingMemoryNodeStore("/jcr:system"));
-            mounts.add(new SpyingMemoryNodeStore("/salut"));
+            //mounts.add(new SpyingMemoryNodeStore("/x"));
+            //mounts.add(new SpyingMemoryNodeStore("/jcr:system"));
+            //mounts.add(new SpyingMemoryNodeStore("/salut"));
         }
         
         @Override
