@@ -11,6 +11,7 @@ import org.apache.jackrabbit.oak.cache.CacheStats;
 import org.apache.jackrabbit.oak.plugins.document.UpdateOp.Condition;
 import org.apache.jackrabbit.oak.plugins.document.UpdateOp.Key;
 import org.apache.jackrabbit.oak.plugins.document.cache.CacheInvalidationStats;
+import org.apache.jackrabbit.oak.plugins.document.util.Utils;
 import org.apache.jackrabbit.util.Text;
 
 import com.google.common.base.Preconditions;
@@ -51,18 +52,37 @@ public class MultiplexingDocumentStore implements DocumentStore {
     
     @Override
     public <T extends Document> T find(Collection<T> collection, String key) {
-        
         return find(collection, key, Integer.MAX_VALUE);
     }
     
+    private boolean doNotMap(String path) {
+        return path.startsWith("/oak:");
+    }
+    
+    private DocumentKey asDocumentKey(String key) {
+        if(Utils.isIdFromLongPath(key)) {
+            // We'll need to find a way to select a store based on those hashed keys which
+            // are created by Utils.getIdFromPath(...)
+            throw new IllegalArgumentException("Cannot use hashed document key:" + key);
+        }
+        return DocumentKey.fromKey(key);
+    }
+    
     private DocumentStore findOwnerStore(String key, Collection<?> collection, OnFailure onFailure) {
-
-        return findOwnerStore(DocumentKey.fromKey(key), collection, onFailure);
+        return findOwnerStore(asDocumentKey(key), collection, onFailure);
     }
     
     private DocumentStore findOwnerStore(UpdateOp update, Collection<?> collection, OnFailure onFailure) {
-        
-        return findOwnerStore(update.splitFrom != null ? update.splitFrom : update.getId(), collection, onFailure);
+        String keyPath = update.getId();
+        final UpdateOp.Operation op = update.getChanges().get(new UpdateOp.Key(NodeDocument.PATH,null));
+        if(op != null) {
+            // If a long path was transformed to a hash, use the original path here
+            keyPath = op.value.toString();
+        }
+        if(doNotMap(keyPath)) {
+            return root;
+        }
+        return findOwnerStore(update.splitFrom != null ? update.splitFrom : keyPath, collection, onFailure);
     }
     
 
@@ -73,6 +93,10 @@ public class MultiplexingDocumentStore implements DocumentStore {
         }
         
         String path = key.getPath();
+        
+        if(doNotMap(path)) {
+            return root;
+        }
         
         List<DocumentStoreMount> candidates = Lists.newArrayList();
 
@@ -126,8 +150,8 @@ public class MultiplexingDocumentStore implements DocumentStore {
             return root.query(collection, fromKey, toKey, limit);
         }
         
-        DocumentKey from = DocumentKey.fromKey(fromKey);
-        DocumentKey to = DocumentKey.fromKey(toKey);
+        DocumentKey from = asDocumentKey(fromKey);
+        DocumentKey to = asDocumentKey(toKey);
         
         DocumentStore owner = findOwnerStore(from, collection, OnFailure.FAIL_FAST);
         List<T> main = owner.query(collection, fromKey, toKey, indexedProperty, startValue, limit);
