@@ -78,10 +78,12 @@ public abstract class NodeStoreFixture {
         public NodeStore createNodeStore() {
             final DocumentStore ds = new MultiplexingDocumentStore.Builder()
             .root(new MemoryDocumentStore())
-            // TODO check which paths to use so that the stores are actually used by tests
             .mount("/jcr:system", new MemoryDocumentStore())
-            .mount("/x", new MemoryDocumentStore())
+            .mount("/foo", new MemoryDocumentStore())
+            .mount("/bar", new MemoryDocumentStore())
             .mount("/test", new MemoryDocumentStore())
+            .mount("/parent", new MemoryDocumentStore())
+            .mount("/n", new MemoryDocumentStore())
             .build();
             return new DocumentMK.Builder().setDocumentStore(ds).getNodeStore();
         }
