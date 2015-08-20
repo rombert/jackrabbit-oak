@@ -80,6 +80,12 @@ public abstract class AbstractRepositoryTest {
         if (FIXTURES.contains(Fixture.DOCUMENT_RDB)) {
             result.add(new Object[] { NodeStoreFixture.DOCUMENT_RDB });
         }
+        if (FIXTURES.contains(Fixture.MEMORY_NS)) {
+            result.add(new Object[] { NodeStoreFixture.MEMORY_NS});
+        }
+        if (FIXTURES.contains(Fixture.MEMORY_MULTI_NS)) {
+            result.add(new Object[] { NodeStoreFixture.MEMORY_MULTI_NS});
+        }
         return result;
     }
 

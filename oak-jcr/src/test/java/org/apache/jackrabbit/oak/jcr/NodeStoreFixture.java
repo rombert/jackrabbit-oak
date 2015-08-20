@@ -29,6 +29,9 @@ import com.mongodb.DB;
 
 import org.apache.jackrabbit.oak.plugins.document.DocumentMK;
 import org.apache.jackrabbit.oak.plugins.document.DocumentNodeStore;
+import org.apache.jackrabbit.oak.plugins.document.DocumentStore;
+import org.apache.jackrabbit.oak.plugins.document.MultiplexingDocumentStore;
+import org.apache.jackrabbit.oak.plugins.document.memory.MemoryDocumentStore;
 import org.apache.jackrabbit.oak.plugins.document.rdb.RDBDataSourceFactory;
 import org.apache.jackrabbit.oak.plugins.document.rdb.RDBOptions;
 import org.apache.jackrabbit.oak.plugins.document.util.MongoConnection;
@@ -91,6 +94,53 @@ public abstract class NodeStoreFixture {
         @Override
         public String toString() {
             return "RDBDocumentStore on " + this.jdbcUrl;
+        }
+    };
+    
+    public static final NodeStoreFixture MEMORY_NS = new NodeStoreFixture() {
+        @Override
+        public String toString() {
+            return "MemoryNodeStore Fixture";
+        }
+
+        @Override
+        public NodeStore createNodeStore() {
+            return new DocumentMK.Builder().setDocumentStore(new MemoryDocumentStore()).getNodeStore();
+        }
+
+        @Override
+        public void dispose(NodeStore nodeStore) {
+            if (nodeStore instanceof DocumentNodeStore) {
+                ((DocumentNodeStore) nodeStore).dispose();
+            }
+        }
+    };
+    
+    public static final NodeStoreFixture MEMORY_MULTI_NS = new NodeStoreFixture() {
+        @Override
+        public String toString() {
+            return "Multiplexing MemoryNodeStore Fixture";
+        }
+
+        @Override
+        public NodeStore createNodeStore() {
+            final DocumentStore ds = new MultiplexingDocumentStore.Builder()
+            .root(new MemoryDocumentStore())
+            .mount("/jcr:system", new MemoryDocumentStore())
+            .mount("/foo", new MemoryDocumentStore())
+            .mount("/bar", new MemoryDocumentStore())
+            .mount("/test", new MemoryDocumentStore())
+            .mount("/parent", new MemoryDocumentStore())
+            .mount("/n", new MemoryDocumentStore())
+            .build();
+            return new DocumentMK.Builder().setDocumentStore(ds).getNodeStore();
+        }
+
+        @Override
+        public void dispose(NodeStore nodeStore) {
+            if (nodeStore instanceof DocumentNodeStore) {
+                ((DocumentNodeStore) nodeStore).dispose();
+            }
         }
     };
 
