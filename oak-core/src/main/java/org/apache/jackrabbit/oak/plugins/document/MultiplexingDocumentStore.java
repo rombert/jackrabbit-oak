@@ -243,10 +243,15 @@ public class MultiplexingDocumentStore implements DocumentStore {
     @Override
     public <T extends Document> boolean create(Collection<T> collection, List<UpdateOp> updateOps) {
 
-        boolean created = false;
+        if(updateOps.isEmpty()) {
+            // The DocumentStore API is not fully clear about this case
+            return false;
+        }
+        
+        boolean created = true;
         
         for ( UpdateOp updateOp: updateOps ) {
-           created |= findOwnerStore(updateOp, collection, OnFailure.FAIL_FAST)
+            created &= findOwnerStore(updateOp, collection, OnFailure.FAIL_FAST)
                    .create(collection, Collections.singletonList(updateOp));
         }
         
