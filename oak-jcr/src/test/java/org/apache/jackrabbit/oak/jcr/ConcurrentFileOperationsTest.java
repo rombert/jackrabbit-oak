@@ -16,6 +16,9 @@
  */
 package org.apache.jackrabbit.oak.jcr;
 
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
+
 import java.io.ByteArrayInputStream;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -25,22 +28,16 @@ import java.util.Map;
 import java.util.Random;
 
 import javax.jcr.Node;
-import javax.jcr.Property;
-import javax.jcr.PropertyIterator;
 import javax.jcr.RepositoryException;
 import javax.jcr.Session;
-import javax.jcr.Value;
-import javax.jcr.util.TraversingItemVisitor;
 
 import org.apache.jackrabbit.commons.JcrUtils;
 import org.apache.jackrabbit.oak.commons.PathUtils;
+import org.apache.jackrabbit.oak.jcr.util.TreeDump;
 import org.junit.Before;
 import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
 
 /**
  * File related write operations on the repository.
@@ -107,7 +104,7 @@ public class ConcurrentFileOperationsTest extends AbstractRepositoryTest {
                         }
 
                     } catch (RepositoryException e) {
-                        exceptions.put(path, new Exception(dumpTree(s, path), e));
+                        exceptions.put(path, new Exception(new TreeDump(s, path).toString(), e));
                     }
                 }
             }));
@@ -125,46 +122,6 @@ public class ConcurrentFileOperationsTest extends AbstractRepositoryTest {
             log.info("Worker (" + entry.getKey() + ") failed with exception: " + entry.getValue().toString());
             throw entry.getValue();
         }
-    }
-
-    String dumpTree(Session s, String path) {
-        final StringBuilder msg = new StringBuilder();
-        try {
-            s.getNode(path).accept(new TraversingItemVisitor.Default() {
-                @Override
-                protected void entering(Node node, int level)
-                        throws RepositoryException {
-                    String indent = "";
-                    for (int i = 0; i < level; i++) {
-                        indent += "  ";
-                    }
-                    msg.append(indent).append(node.getName()).append("\n");
-                    PropertyIterator it = node.getProperties();
-                    indent += "  ";
-                    while (it.hasNext()) {
-                        Property p = it.nextProperty();
-                        msg.append(indent).append(p.getName()).append(": ");
-                        if (p.isMultiple()) {
-                            msg.append("[");
-                            String sep = "";
-                            Value[] values = p.getValues();
-                            for (Value value : values) {
-                                msg.append(sep);
-                                msg.append(value.getString());
-                                sep = ", ";
-                            }
-                            msg.append("]");
-                        } else {
-                            msg.append(p.getValue().getString());
-                        }
-                        msg.append("\n");
-                    }
-                }
-            });
-        } catch (RepositoryException e) {
-            msg.append(e.toString());
-        }
-        return msg.toString();
     }
 
     @Test
