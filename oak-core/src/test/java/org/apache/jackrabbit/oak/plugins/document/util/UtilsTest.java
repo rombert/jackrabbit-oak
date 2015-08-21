@@ -32,6 +32,7 @@ import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 
@@ -62,7 +63,8 @@ public class UtilsTest {
         String longPath = PathUtils.concat("/"+Strings.repeat("p", Utils.PATH_LONG + 1), "foo");
         assertTrue(Utils.isLongPath(longPath));
 
-        assertNull(Utils.getParentId(Utils.getIdFromPath(longPath)));
+        // updated to match the changes to Utils.getIdFromPath 
+        assertNotNull(Utils.getParentId(Utils.getIdFromPath(longPath)));
 
         assertNull(Utils.getParentId(Utils.getIdFromPath("/")));
         assertEquals("1:/foo",Utils.getParentId("2:/foo/bar"));
