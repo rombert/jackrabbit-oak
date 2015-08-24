@@ -339,6 +339,13 @@ public class LoggingDocumentStoreWrapper implements DocumentStore {
         store.setDocumentCreationCustomiser(customiser);
     }
 
+    public long determineServerTimeDifferenceMillis() {
+        logMethod("determineServerTimeDifferenceMillis", "start");
+        long result = store.determineServerTimeDifferenceMillis();
+        logMethod("determineServerTimeDifferenceMillis", "end", result);
+        return result;
+    }
+
     private void logMethod(String methodName, Object... args) {
         StringBuilder buff = new StringBuilder("ds");
         buff.append('.').append(methodName).append('(');

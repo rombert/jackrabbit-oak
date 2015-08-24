@@ -223,4 +223,9 @@ public class CountingDocumentStore implements DocumentStore {
     public void setDocumentCreationCustomiser(DocumentCreationCustomiser customiser) {
         delegate.setDocumentCreationCustomiser(customiser);
     }
+
+    @Override
+    public long determineServerTimeDifferenceMillis() {
+        return delegate.determineServerTimeDifferenceMillis();
+    }
 }

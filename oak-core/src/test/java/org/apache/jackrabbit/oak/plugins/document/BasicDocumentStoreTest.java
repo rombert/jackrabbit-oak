@@ -115,7 +115,11 @@ public class BasicDocumentStoreTest extends AbstractDocumentStoreTest {
         int last = 0;
 
         while (max - min >= 256) {
-            test = (max + min) / 2;
+            if (test == 0) {
+                test = max; // try largest first
+            } else {
+                test = (max + min) / 2;
+            }
             String id = this.getClass().getName() + ".testMaxProperty-" + test;
             String pval = generateString(test, true);
             UpdateOp up = new UpdateOp(id, true);
@@ -584,6 +588,16 @@ public class BasicDocumentStoreTest extends AbstractDocumentStoreTest {
     public void description() throws Exception{
         Map<String, String> desc = ds.getMetadata();
         assertNotNull(desc.get("type"));
+    }
+
+    @Test
+    public void testServerTimeDiff() throws Exception {
+        UpdateOp up = new UpdateOp("0:/", true);
+        up.set("_id", "0:/");
+        super.ds.create(Collection.NODES, Collections.singletonList(up));
+        removeMe.add("0:/");
+        long td = super.ds.determineServerTimeDifferenceMillis();
+        LOG.info("Server time difference on " + super.dsname + ": " + td + "ms");
     }
 
     @Test

@@ -409,4 +409,9 @@ public class MemoryDocumentStore implements DocumentStore {
         this.customiser  = customiser;
     }
 
+    @Override
+    public long determineServerTimeDifferenceMillis() {
+        // the MemoryDocumentStore has no delays, thus return 0
+        return 0;
+    }
 }

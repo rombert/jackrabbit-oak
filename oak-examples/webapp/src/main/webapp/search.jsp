@@ -30,13 +30,14 @@
                    java.util.ArrayList,
                    java.util.Iterator,
                    javax.jcr.Value,
+                   javax.jcr.GuestCredentials,
                    javax.jcr.RepositoryException"%>
 <%@ page contentType="text/html;charset=UTF-8" %><%
     Repository rep;
     Session jcrSession;
     try {
         rep = RepositoryAccessServlet.getRepository(pageContext.getServletContext());
-        jcrSession = rep.login(new SimpleCredentials("anonymous", "".toCharArray()));
+        jcrSession = rep.login(new SimpleCredentials("admin", "admin".toCharArray()));
     } catch (Throwable e) {
         %>Error while accessing the repository: <font color="red"><%= Text.encodeIllegalXMLCharacters(e.getMessage()) %></font><br><%
         %>Check the configuration or use the <a href="admin/">easy setup</a> wizard.<%
@@ -114,11 +115,14 @@
 
             if (total < 10 && !q.startsWith("related:")) {
                 try {
-                    Value v = jcrSession.getWorkspace().getQueryManager().createQuery(
+                    RowIterator spellResultItr = jcrSession.getWorkspace().getQueryManager().createQuery(
                             "/jcr:root[rep:spellcheck('" + q + "')]/(rep:spellcheck())",
-                            Query.XPATH).execute().getRows().nextRow().getValue("rep:spellcheck()");
-                    if (v != null) {
-                        suggestedQuery = v.getString();
+                            Query.XPATH).execute().getRows();
+                    if (spellResultItr.hasNext()){
+                        Value v = spellResultItr.nextRow().getValue("rep:spellcheck()");
+                        if (v != null) {
+                            suggestedQuery = v.getString();
+                        }
                     }
                 } catch (RepositoryException e) {
                     // ignore

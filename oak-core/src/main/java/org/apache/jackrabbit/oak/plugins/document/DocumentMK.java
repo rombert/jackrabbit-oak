@@ -478,6 +478,7 @@ public class DocumentMK {
         private int asyncDelay = 1000;
         private boolean timing;
         private boolean logging;
+        private boolean leaseCheck = true; // OAK-2739 is enabled by default also for non-osgi
         private Weigher<CacheValue, CacheValue> weigher = new EmpiricalWeigher();
         private long memoryCacheSize = DEFAULT_MEMORY_CACHE_SIZE;
         private int nodeCachePercentage = DEFAULT_NODE_CACHE_PERCENTAGE;
@@ -487,7 +488,6 @@ public class DocumentMK {
         private int cacheSegmentCount = DEFAULT_CACHE_SEGMENT_COUNT;
         private int cacheStackMoveDistance = DEFAULT_CACHE_STACK_MOVE_DISTANCE;
         private boolean useSimpleRevision;
-        private long splitDocumentAgeMillis = 5 * 60 * 1000;
         private long offHeapCacheSize = -1;
         private long maxReplicationLagMillis = TimeUnit.HOURS.toMillis(6);
         private boolean disableBranches;
@@ -525,11 +525,9 @@ public class DocumentMK {
          * Use the given MongoDB as backend storage for the DocumentNodeStore.
          *
          * @param db the MongoDB connection
-         * @param changesSizeMB the size in MB of the capped collection backing
-         *                      the MongoDiffCache.
          * @return this
          */
-        public Builder setMongoDB(DB db, int changesSizeMB, int blobCacheSizeMB) {
+        public Builder setMongoDB(DB db, int blobCacheSizeMB) {
             if (db != null) {
                 if (this.documentStore == null) {
                     
@@ -571,7 +569,7 @@ public class DocumentMK {
          * @return this
          */
         public Builder setMongoDB(DB db) {
-            return setMongoDB(db, 8, 16);
+            return setMongoDB(db, 16);
         }
 
         /**
@@ -646,6 +644,15 @@ public class DocumentMK {
 
         public boolean getLogging() {
             return logging;
+        }
+        
+        public Builder setLeaseCheck(boolean leaseCheck) {
+            this.leaseCheck = leaseCheck;
+            return this;
+        }
+        
+        public boolean getLeaseCheck() {
+            return leaseCheck;
         }
 
         /**
@@ -814,15 +821,6 @@ public class DocumentMK {
             return useSimpleRevision;
         }
 
-        public Builder setSplitDocumentAgeMillis(long splitDocumentAgeMillis) {
-            this.splitDocumentAgeMillis = splitDocumentAgeMillis;
-            return this;
-        }
-
-        public long getSplitDocumentAgeMillis() {
-            return splitDocumentAgeMillis;
-        }
-
         public boolean useOffHeapCache() {
             return this.offHeapCacheSize > 0;
         }
@@ -923,7 +921,7 @@ public class DocumentMK {
                 DocumentNodeStore docNodeStore,
                 DocumentStore docStore
                 ) {
-            Cache<K, V> cache = buildCache(maxWeight);
+            Cache<K, V> cache = buildCache(cacheType.name(), maxWeight);
             PersistentCache p = getPersistentCache();
             if (p != null) {
                 if (docNodeStore != null) {
@@ -950,6 +948,7 @@ public class DocumentMK {
         }
         
         private <K extends CacheValue, V extends CacheValue> Cache<K, V> buildCache(
+                String module,
                 long maxWeight) {
             // by default, use the LIRS cache when using the persistent cache,
             // but don't use it otherwise
@@ -960,6 +959,7 @@ public class DocumentMK {
             }
             if (useLirs) {
                 return CacheLIRS.<K, V>newBuilder().
+                        module(module).
                         weigher(new Weigher<K, V>() {
                             @Override
                             public int weigh(K key, V value) {

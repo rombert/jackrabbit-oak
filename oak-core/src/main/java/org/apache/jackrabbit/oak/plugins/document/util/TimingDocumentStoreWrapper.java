@@ -363,6 +363,17 @@ public class TimingDocumentStoreWrapper implements DocumentStore {
         base.setDocumentCreationCustomiser(customiser);
     }
     
+    public long determineServerTimeDifferenceMillis() {
+        try {
+            long start = now();
+            long result = base.determineServerTimeDifferenceMillis();
+            updateAndLogTimes("determineServerTimeDifferenceMillis", start, 0, 0);
+            return result;
+        } catch (Exception e) {
+            throw convert(e);
+        }
+    }
+
     private void logCommonCall(long start, String key) {
         int time = (int) (System.currentTimeMillis() - start);
         if (time <= 0) {

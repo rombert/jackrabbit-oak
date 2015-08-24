@@ -34,7 +34,8 @@ import javax.jcr.*
 import java.util.concurrent.TimeUnit
 
 import static org.apache.jackrabbit.oak.run.osgi.OakOSGiRepositoryFactory.REPOSITORY_HOME
-import static org.apache.jackrabbit.oak.run.osgi.OakOSGiRepositoryFactory.REPOSITORY_STARTUP_TIMEOUT
+import static org.apache.jackrabbit.oak.run.osgi.OakOSGiRepositoryFactory.REPOSITORY_TIMEOUT_IN_SECS
+import static org.apache.jackrabbit.oak.run.osgi.OakOSGiRepositoryFactory.REPOSITORY_BUNDLE_FILTER
 
 abstract class AbstractRepositoryFactoryTest{
     static final int SVC_WAIT_TIME = Integer.getInteger("pojosr.waitTime", 10)
@@ -51,7 +52,14 @@ abstract class AbstractRepositoryFactoryTest{
         workDir = tmpFolder.getRoot();
         config = [
                 (REPOSITORY_HOME): workDir.absolutePath,
-                (REPOSITORY_STARTUP_TIMEOUT) : 2
+                (REPOSITORY_TIMEOUT_IN_SECS) : 60,
+                (REPOSITORY_BUNDLE_FILTER) : '''
+                            (|
+                            (Bundle-SymbolicName=org.apache.jackrabbit*)
+                            (Bundle-SymbolicName=org.apache.sling*)
+                            (Bundle-SymbolicName=org.apache.felix*)
+                            (Bundle-SymbolicName=org.apache.aries*)
+                            )''',
         ]
     }
 

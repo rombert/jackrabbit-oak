@@ -106,7 +106,6 @@ public class DocumentNodeStoreService {
     private static final String DEFAULT_URI = "mongodb://localhost:27017/oak";
     private static final int DEFAULT_CACHE = 256;
     private static final int DEFAULT_OFF_HEAP_CACHE = 0;
-    private static final int DEFAULT_CHANGES_SIZE = 256;
     private static final int DEFAULT_BLOB_CACHE_SIZE = 16;
     private static final String DEFAULT_DB = "oak";
     private static final String DEFAULT_PERSISTENT_CACHE = "";
@@ -189,13 +188,6 @@ public class DocumentNodeStoreService {
     private static final String PROP_CACHE_STACK_MOVE_DISTANCE = "cacheStackMoveDistance";
 
     private static final String PROP_OFF_HEAP_CACHE = "offHeapCache";
-
-    @Property(intValue =  DEFAULT_CHANGES_SIZE,
-            label = "Mongo Changes Collection Size (in MB)",
-            description = "With the MongoDB backend, the DocumentNodeStore uses a capped collection to cache the diff. " +
-                    "This value is used to determine the size of that capped collection"
-    )
-    private static final String PROP_CHANGES_SIZE = "changesSize";
 
     @Property(intValue =  DEFAULT_BLOB_CACHE_SIZE,
             label = "Blob Cache Size (in MB)",
@@ -371,7 +363,6 @@ public class DocumentNodeStoreService {
         int childrenCachePercentage = toInteger(prop(PROP_CHILDREN_CACHE_PERCENTAGE), DEFAULT_CHILDREN_CACHE_PERCENTAGE);
         int docChildrenCachePercentage = toInteger(prop(PROP_DOC_CHILDREN_CACHE_PERCENTAGE), DEFAULT_DOC_CHILDREN_CACHE_PERCENTAGE);
         int diffCachePercentage = toInteger(prop(PROP_DIFF_CACHE_PERCENTAGE), DEFAULT_DIFF_CACHE_PERCENTAGE);
-        int changesSize = toInteger(prop(PROP_CHANGES_SIZE), DEFAULT_CHANGES_SIZE);
         int blobCacheSize = toInteger(prop(PROP_BLOB_CACHE_SIZE), DEFAULT_BLOB_CACHE_SIZE);
         String persistentCache = PropertiesUtil.toString(prop(PROP_PERSISTENT_CACHE), DEFAULT_PERSISTENT_CACHE);
         int cacheSegmentCount = toInteger(prop(PROP_CACHE_SEGMENT_COUNT), DEFAULT_CACHE_SEGMENT_COUNT);
@@ -388,7 +379,8 @@ public class DocumentNodeStoreService {
                         diffCachePercentage).
                 setCacheSegmentCount(cacheSegmentCount).
                 setCacheStackMoveDistance(cacheStackMoveDistance).
-                offHeapCacheSize(offHeapCache * MB);
+                offHeapCacheSize(offHeapCache * MB).
+                setLeaseCheck(true /* OAK-2739: enabled by default */);
 
         if (persistentCache != null && persistentCache.length() > 0) {
             mkBuilder.setPersistentCache(persistentCache);
@@ -437,8 +429,8 @@ public class DocumentNodeStoreService {
                 // Take care around not logging the uri directly as it
                 // might contain passwords
                 log.info("Starting DocumentNodeStore with host={}, db={}, cache size (MB)={}, persistentCache={}, " +
-                                "'changes' collection size (MB)={}, blobCacheSize (MB)={}, maxReplicationLagInSecs={}",
-                        mongoURI.getHosts(), db, cacheSize, persistentCache, changesSize, blobCacheSize, maxReplicationLagInSecs);
+                                "blobCacheSize (MB)={}, maxReplicationLagInSecs={}",
+                        mongoURI.getHosts(), db, cacheSize, persistentCache, blobCacheSize, maxReplicationLagInSecs);
                 if ( mounts.size() > 0 ) {
                     log.info("Configuring mounts: {}", mounts);
                 }
@@ -452,7 +444,7 @@ public class DocumentNodeStoreService {
             for ( Map.Entry<String, String> entry : mounts.entrySet() ) {
                 mkBuilder.addMongoDbMount(entry.getKey(), mongoDB, entry.getValue());
             }
-            mkBuilder.setMongoDB(mongoDB, changesSize, blobCacheSize);
+            mkBuilder.setMongoDB(mongoDB, blobCacheSize);
 
             log.info("Connected to database {}", mongoDB);
         }
@@ -483,6 +475,23 @@ public class DocumentNodeStoreService {
         observerTracker.start(context.getBundleContext());
 
         DocumentStore ds = mk.getDocumentStore();
+
+        // OAK-2682: time difference detection applied at startup with a default
+        // max time diff of 2000 millis (2sec)
+        final long maxDiff = Long.parseLong(System.getProperty("oak.documentMK.maxServerTimeDiffMillis", "2000"));
+        try {
+            if (maxDiff>=0) {
+                final long timeDiff = ds.determineServerTimeDifferenceMillis();
+                log.info("registerNodeStore: server time difference: {}ms (max allowed: {}ms)", timeDiff, maxDiff);
+                if (Math.abs(timeDiff) > maxDiff) {
+                    throw new AssertionError("Server clock seems off (" + timeDiff + "ms) by more than configured amount ("
+                            + maxDiff + "ms)");
+                }
+            }
+        } catch (RuntimeException e) { // no checked exception
+            // in case of a RuntimeException, just log but continue
+            log.warn("registerNodeStore: got RuntimeException while trying to determine time difference to server: " + e, e);
+        }
 
         Dictionary<String, Object> props = new Hashtable<String, Object>();
         props.put(Constants.SERVICE_PID, DocumentNodeStore.class.getName());
