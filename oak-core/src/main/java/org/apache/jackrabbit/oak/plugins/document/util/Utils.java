@@ -16,13 +16,11 @@
  */
 package org.apache.jackrabbit.oak.plugins.document.util;
 
-import static com.google.common.base.Preconditions.checkNotNull;
-import static com.google.common.collect.Iterables.transform;
-import static org.apache.jackrabbit.oak.plugins.document.NodeDocument.isDeletedEntry;
-
 import java.io.Closeable;
 import java.io.IOException;
 import java.nio.charset.Charset;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.sql.Timestamp;
 import java.util.Comparator;
 import java.util.Iterator;
@@ -36,6 +34,12 @@ import javax.annotation.CheckForNull;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
+import com.google.common.base.Function;
+import com.google.common.base.Predicate;
+import com.google.common.collect.AbstractIterator;
+import com.mongodb.BasicDBObject;
+
+import org.apache.commons.codec.binary.Hex;
 import org.apache.jackrabbit.oak.commons.PathUtils;
 import org.apache.jackrabbit.oak.plugins.document.Collection;
 import org.apache.jackrabbit.oak.plugins.document.DocumentStore;
@@ -47,10 +51,9 @@ import org.bson.types.ObjectId;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.google.common.base.Function;
-import com.google.common.base.Predicate;
-import com.google.common.collect.AbstractIterator;
-import com.mongodb.BasicDBObject;
+import static com.google.common.base.Preconditions.checkNotNull;
+import static com.google.common.collect.Iterables.transform;
+import static org.apache.jackrabbit.oak.plugins.document.NodeDocument.isDeletedEntry;
 
 /**
  * Utility methods.
@@ -252,19 +255,17 @@ public class Utils {
 
     public static String getIdFromPath(String path) {
         if (isLongPath(path)) {
-            // See "Is the hashing of long paths still needed?" thread on oak-dev
-            LOG.warn("TODO, long path won't be hashed, not sure if that's ok: {}", path);
-//            MessageDigest digest;
-//            try {
-//                digest = MessageDigest.getInstance("SHA-256");
-//            } catch (NoSuchAlgorithmException e) {
-//                throw new RuntimeException(e);
-//            }
-//            int depth = Utils.pathDepth(path);
-//            String parent = PathUtils.getParentPath(path);
-//            byte[] hash = digest.digest(parent.getBytes(UTF_8));
-//            String name = PathUtils.getName(path);
-//            return depth + ":h" + Hex.encodeHexString(hash) + "/" + name;
+            MessageDigest digest;
+            try {
+                digest = MessageDigest.getInstance("SHA-256");
+            } catch (NoSuchAlgorithmException e) {
+                throw new RuntimeException(e);
+            }
+            int depth = Utils.pathDepth(path);
+            String parent = PathUtils.getParentPath(path);
+            byte[] hash = digest.digest(parent.getBytes(UTF_8));
+            String name = PathUtils.getName(path);
+            return depth + ":h" + Hex.encodeHexString(hash) + "/" + name;
         }
         int depth = Utils.pathDepth(path);
         return depth + ":" + path;
