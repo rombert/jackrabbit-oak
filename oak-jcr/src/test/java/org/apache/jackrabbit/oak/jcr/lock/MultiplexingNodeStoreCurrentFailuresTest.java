@@ -9,23 +9,13 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Map;
-import java.util.concurrent.CountDownLatch;
 
-import javax.jcr.ItemExistsException;
 import javax.jcr.LoginException;
 import javax.jcr.Node;
-import javax.jcr.PathNotFoundException;
 import javax.jcr.Repository;
 import javax.jcr.RepositoryException;
 import javax.jcr.Session;
 import javax.jcr.SimpleCredentials;
-import javax.jcr.lock.LockException;
-import javax.jcr.nodetype.ConstraintViolationException;
-import javax.jcr.nodetype.NoSuchNodeTypeException;
-import javax.jcr.observation.Event;
-import javax.jcr.observation.EventIterator;
-import javax.jcr.observation.EventListener;
-import javax.jcr.version.VersionException;
 
 import org.apache.jackrabbit.api.JackrabbitRepository;
 import org.apache.jackrabbit.oak.jcr.Jcr;
@@ -40,7 +30,6 @@ import org.apache.jackrabbit.oak.spi.lifecycle.RepositoryInitializer;
 import org.apache.jackrabbit.oak.spi.state.NodeBuilder;
 import org.junit.After;
 import org.junit.Before;
-import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
@@ -133,35 +122,6 @@ public class MultiplexingNodeStoreCurrentFailuresTest {
                 with(JcrConflictHandler.createJcrConflictHandler());
         
         repo = jcr.createRepository();
-    }
-
-    @Test
-    @Ignore("OAK-3152")
-    public void loopLocking() throws Exception {
-        
-        int locksPerIteration = 10;
-        int iterations = 10;
-
-        for (int i = 0; i < iterations; i++) {
-
-            for (int j = 0; j < locksPerIteration; j++) {
-
-                Session session = getAdminSession();
-
-                try {
-
-                    Node first = session.getNode("/first");
-
-                    first.lock(true, false);
-                    first.unlock();
-                } finally {
-                    session.logout();
-                }
-            }
-
-            reinitRepo(0);
-        }
-
     }
 
     @Test
@@ -261,21 +221,6 @@ public class MultiplexingNodeStoreCurrentFailuresTest {
         }
     }
    
-    /**
-     * Reinitialises the repository instance, optionally waiting for <tt>wait</tt> milliseconds
-     * 
-     * @param wait the number of millis to wait, ignored if <= 0
-     * @throws InterruptedException
-     * @throws UnknownHostException
-     */
-    private void reinitRepo(long wait) throws InterruptedException, UnknownHostException {
-        ((JackrabbitRepository) repo).shutdown();
-        if ( wait > 0 ) {
-            Thread.sleep(wait);
-        }
-        initRepo(false);
-    }
-    
     static class Indexes implements RepositoryInitializer {
 
         @Override
