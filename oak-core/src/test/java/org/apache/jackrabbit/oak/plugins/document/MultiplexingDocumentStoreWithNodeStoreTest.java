@@ -39,7 +39,7 @@ public class MultiplexingDocumentStoreWithNodeStoreTest {
         // 2. configure the DocumentNodeStore with a multiplexing document store, with a mount at "/tmp"
         DocumentMK.Builder builder = new DocumentMK.Builder();
         builder.addMongoDbMount("/tmp", connection.getDB(), "private");
-        builder.setMongoDB(connection.getDB(), 1, 16);
+        builder.setMongoDB(connection.getDB(), 1);
 
         DocumentNodeStore store = new DocumentNodeStore(builder);
 
@@ -139,7 +139,7 @@ public class MultiplexingDocumentStoreWithNodeStoreTest {
                 }
             }
 
-            mkBuilder.setMongoDB(mongoDB, 256, 16);
+            mkBuilder.setMongoDB(mongoDB, 256);
 
             mk = mkBuilder.open();                
         }

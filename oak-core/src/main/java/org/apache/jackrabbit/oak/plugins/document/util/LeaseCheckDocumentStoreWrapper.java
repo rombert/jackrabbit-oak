@@ -192,5 +192,10 @@ public final class LeaseCheckDocumentStoreWrapper implements DocumentStore {
         performLeaseCheck();
         return delegate.determineServerTimeDifferenceMillis();
     }
+    
+    @Override
+    public void setDocumentCreationCustomiser(DocumentCreationCustomiser customiser) {
+        delegate.setDocumentCreationCustomiser(customiser);
+    }
 
 }

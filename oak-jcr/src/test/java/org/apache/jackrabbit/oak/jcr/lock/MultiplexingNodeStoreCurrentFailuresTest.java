@@ -113,7 +113,7 @@ public class MultiplexingNodeStoreCurrentFailuresTest {
             }
         }
 
-        mkBuilder.setMongoDB(mongoDB, 256, 16);
+        mkBuilder.setMongoDB(mongoDB, 256);
 
         nodeStore = mkBuilder.open().getNodeStore();
         

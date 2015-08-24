@@ -429,4 +429,11 @@ public class MultiplexingDocumentStore implements DocumentStore {
         FAIL_FAST, CALL_FIND_FOR_MATCHING_KEY;
     }
 
+    @Override
+    public long determineServerTimeDifferenceMillis() {
+        // TODO - the semantics are a bit unclear, what should we return here?
+        // For now let's go with the root store
+        return root.determineServerTimeDifferenceMillis();
+    }
+
 }
