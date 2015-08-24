@@ -38,6 +38,7 @@ import org.apache.jackrabbit.oak.plugins.index.IndexUtils;
 import org.apache.jackrabbit.oak.plugins.nodetype.write.InitialContent;
 import org.apache.jackrabbit.oak.spi.lifecycle.RepositoryInitializer;
 import org.apache.jackrabbit.oak.spi.state.NodeBuilder;
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Ignore;
 import org.junit.Test;
@@ -81,6 +82,15 @@ public class MultiplexingNodeStoreCurrentFailuresTest {
         first.addMixin("mix:lockable");
         session.save();
         session.logout();
+    }
+    
+    @After
+    public void cleanup() throws Exception {
+        if ( repo instanceof JackrabbitRepository ) {
+            ((JackrabbitRepository) repo).shutdown();
+        }
+        
+        nodeStore.dispose();
     }
     
     private Session getAdminSession() throws LoginException, RepositoryException {
