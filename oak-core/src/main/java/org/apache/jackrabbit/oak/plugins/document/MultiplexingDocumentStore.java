@@ -11,7 +11,6 @@ import org.apache.jackrabbit.oak.cache.CacheStats;
 import org.apache.jackrabbit.oak.plugins.document.UpdateOp.Condition;
 import org.apache.jackrabbit.oak.plugins.document.UpdateOp.Key;
 import org.apache.jackrabbit.oak.plugins.document.cache.CacheInvalidationStats;
-import org.apache.jackrabbit.oak.plugins.document.util.Utils;
 import org.apache.jackrabbit.util.Text;
 
 import com.google.common.base.Preconditions;
@@ -60,11 +59,6 @@ public class MultiplexingDocumentStore implements DocumentStore {
     }
     
     private DocumentKey asDocumentKey(String key) {
-        if(Utils.isIdFromLongPath(key)) {
-            // We'll need to find a way to select a store based on those hashed keys which
-            // are created by Utils.getIdFromPath(...)
-            throw new IllegalArgumentException("Cannot use hashed document key:" + key);
-        }
         return DocumentKey.fromKey(key);
     }
     
@@ -73,16 +67,22 @@ public class MultiplexingDocumentStore implements DocumentStore {
     }
     
     private DocumentStore findOwnerStore(UpdateOp update, Collection<?> collection, OnFailure onFailure) {
-        String keyPath = update.getId();
+        DocumentKey key;
         final UpdateOp.Operation op = update.getChanges().get(new UpdateOp.Key(NodeDocument.PATH,null));
         if(op != null) {
             // If a long path was transformed to a hash, use the original path here
-            keyPath = op.value.toString();
+            key = DocumentKey.fromPath(op.value.toString());
+        } else if  ( update.splitFrom != null ){
+            // For split documents, use the originator document's id
+            key = DocumentKey.fromKey(update.splitFrom);
+        } else { 
+            // Otherwise, we build from the id
+            key = DocumentKey.fromKey(update.getId());
         }
-        if(doNotMap(keyPath)) {
+        if(doNotMap(key.getPath())) {
             return root;
         }
-        return findOwnerStore(update.splitFrom != null ? update.splitFrom : keyPath, collection, onFailure);
+        return findOwnerStore(key, collection, onFailure);
     }
     
 
@@ -93,27 +93,30 @@ public class MultiplexingDocumentStore implements DocumentStore {
         }
         
         String path = key.getPath();
-        
-        if(doNotMap(path)) {
-            return root;
-        }
-        
-        List<DocumentStoreMount> candidates = Lists.newArrayList();
 
-        // pick stores which can contribute
-        for ( DocumentStoreMount mount : mounts ) {
-            if ( Text.isDescendantOrEqual(mount.getMountPath(), path)) {
-                candidates.add(mount);
-            }
-        }
+        List<DocumentStoreMount> candidates = Lists.newArrayList();
         
-        // sort candidates, longest paths first
-        Collections.sort(candidates, new Comparator<DocumentStoreMount>() {
-            @Override
-            public int compare(DocumentStoreMount o1, DocumentStoreMount o2) {
-                return o2.getMountPath().length() - o1.getMountPath().length();
+        if ( path != null ) {
+        
+            if(doNotMap(path)) {
+                return root;
             }
-        });
+            
+            // pick stores which can contribute
+            for ( DocumentStoreMount mount : mounts ) {
+                if ( Text.isDescendantOrEqual(mount.getMountPath(), path)) {
+                    candidates.add(mount);
+                }
+            }
+            
+            // sort candidates, longest paths first
+            Collections.sort(candidates, new Comparator<DocumentStoreMount>() {
+                @Override
+                public int compare(DocumentStoreMount o1, DocumentStoreMount o2) {
+                    return o2.getMountPath().length() - o1.getMountPath().length();
+                }
+            });
+        }
         
         if ( candidates.isEmpty()) {
             
@@ -125,7 +128,11 @@ public class MultiplexingDocumentStore implements DocumentStore {
                         return mount.getStore();
                     }
                 }
-                
+
+                // if we have looked for the documents everywhere and still have not fond them return a no-op store
+                // this is safe since for query operations it will return no results ( which we already know to be true )
+                // and for any modifications it will fail fast
+                return NoopStore.INSTANCE;
             }
             
             throw new IllegalArgumentException("Could not find an owning store for key " + key.getValue() + " ( matched path = " + key.getPath() + ")");
