@@ -160,8 +160,14 @@ public class MultiplexingDocumentStore implements DocumentStore {
         DocumentKey from = asDocumentKey(fromKey);
         DocumentKey to = asDocumentKey(toKey);
         
-        DocumentStore owner = findOwnerStore(from, collection, OnFailure.FAIL_FAST);
-        List<T> main = owner.query(collection, fromKey, toKey, indexedProperty, startValue, limit);
+        List<T> main;
+        if ( from.getPath() != null && to.getPath() != null ) {
+        
+            DocumentStore owner = findOwnerStore(from, collection, OnFailure.FAIL_FAST);
+            main = owner.query(collection, fromKey, toKey, indexedProperty, startValue, limit);
+        } else {
+            main = Lists.newArrayList();
+        }
         // TODO - do we need a query on the contributing stores or is a 'find' enough?
         for ( DocumentStore contributing : findStoresContainedBetween(from, to)) {
             // TODO - stop the query if we know that we have enough results, e.g. we
@@ -182,10 +188,12 @@ public class MultiplexingDocumentStore implements DocumentStore {
 
     private List<DocumentStore> findStoresContainedBetween(DocumentKey from, DocumentKey to) {
         
+        boolean hasUncertainPaths = from.getPath() == null || to.getPath() == null;
         List<DocumentStore> contained = Lists.newArrayList();
         for ( DocumentStoreMount mount : mounts ) {
             String storePath = mount.getMountPath();
-            if ( from.getPath().compareTo(storePath) < 0 && storePath.compareTo(to.getPath()) < 0 ) {
+            if ( hasUncertainPaths || 
+                    (from.getPath().compareTo(storePath) < 0 && storePath.compareTo(to.getPath()) < 0 ) ) {
                 contained.add(mount.getStore());
             }
         }
