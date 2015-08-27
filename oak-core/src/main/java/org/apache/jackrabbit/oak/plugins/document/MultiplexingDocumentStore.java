@@ -22,16 +22,43 @@ import com.google.common.collect.Maps;
  * 
  * <p>Multiplexing is performed only for the {@link Collection#NODES nodes} collection.</p>
  * 
- * <p>This document store implementation assumes that the keys for document nodes are of the
- * <tt>DEPTH:PATH</tt> format and uses that information to decide how to multiplex operations,
- * i.e. to which store a certain node document belongs.</p>
- * 
  * <p>This store contains one root store, which by default holds all the nodes, and at least
  * one sub-store, which holds all document nodes below certain paths. This concept is similar
  * to the Unix mounts, where a filesystem can be mounted below a certain point.</p>
  * 
  */
 public class MultiplexingDocumentStore implements DocumentStore {
+    
+    // === Implementation Notes === 
+    // 
+    // The MultiplexingDocumentStore assumes that paths are most of the time hierarchical and
+    // uses those paths to decide on which store to operate. There are notable exceptions to
+    // this approach, namely:
+    //
+    // 1. Split documents
+    // 2. Long (hashed) paths
+    // 
+    // These exceptions need special handling, and some of those are (for the moment ) not optimal
+    // from a design and / or performance point of view. The approaches must evolve for this 
+    // implementation to make it back into Oak proper.
+    // 
+    // == Creating documents which don't have a hierarchical id == 
+    // 
+    // When creating a document we must have a path defined for the document. If the key is not
+    // hierarchical we need to infer the path using other means. 
+    //
+    // For split documents, we assume that the creator of the document will have set the 
+    // original document's path in the UpdateOp, as the split document must reside in the same
+    // store as the original document.
+    //
+    // For long paths we expect the change to contain a 'path' property which indicates the path
+    // of the document.
+    //
+    // == Other operations for documents which don't have a hierarchical id ==
+    //
+    // For all other operations we assume that if the document exists it only exists in one of 
+    // the stores. With that assumption we can simply call find or query on all stores and then
+    // use the one that holds it as the owner.
     
     private final DocumentStore root;
     
