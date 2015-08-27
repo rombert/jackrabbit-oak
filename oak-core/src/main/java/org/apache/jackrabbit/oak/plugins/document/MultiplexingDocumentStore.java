@@ -308,11 +308,6 @@ public class MultiplexingDocumentStore implements DocumentStore {
     @Override
     public <T extends Document> void invalidateCache(Collection<T> collection, String key) {
         
-        if ( collection != Collection.NODES ) {
-            root.invalidateCache();
-            return;
-        }
-        
         findOwnerStore(key, collection, OnFailure.CALL_FIND_FOR_MATCHING_KEY).invalidateCache(collection, key);
     }
     
@@ -331,10 +326,6 @@ public class MultiplexingDocumentStore implements DocumentStore {
 
     @Override
     public <T extends Document> T getIfCached(Collection<T> collection, String key) {
-        if ( collection != Collection.NODES) {
-            return root.getIfCached(collection, key);
-        }
-
         return findOwnerStore(key, collection, OnFailure.CALL_FIND_FOR_MATCHING_KEY)
                 .getIfCached(collection, key);
     }
