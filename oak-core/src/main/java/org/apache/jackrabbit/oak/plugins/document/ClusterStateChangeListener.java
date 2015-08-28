@@ -16,35 +16,18 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-package org.apache.jackrabbit.oak.query.index;
-
-import org.apache.jackrabbit.oak.api.PropertyValue;
-import org.apache.jackrabbit.oak.spi.query.IndexRow;
+package org.apache.jackrabbit.oak.plugins.document;
 
 /**
- * A simple index row implementation.
+ * DocumentNS-internal listener that gets invoked when a change in the
+ * clusterNodes collection (active/inactive/timed out/recovering) is detected.
  */
-public class IndexRowImpl implements IndexRow {
+public interface ClusterStateChangeListener {
 
-    private final String path;
-
-    public IndexRowImpl(String path) {
-        this.path = path;
-    }
-
-    @Override
-    public boolean isVirtualRow() {
-        return false;
-    }
-
-    @Override
-    public String getPath() {
-        return path;
-    }
-
-    @Override
-    public PropertyValue getValue(String columnName) {
-        return null;
-    }
+    /**
+     * Informs the listener that DocumentNodeStore has discovered a change in
+     * the clusterNodes collection.
+     */
+    public void handleClusterStateChange();
 
 }
