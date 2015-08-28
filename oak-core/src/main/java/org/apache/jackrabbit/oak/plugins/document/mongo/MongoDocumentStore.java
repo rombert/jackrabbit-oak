@@ -195,15 +195,15 @@ public class MongoDocumentStore implements DocumentStore {
     private String lastReadWriteMode;
 
     private final Map<String, String> metadata;
-    private final String prefix;
+    private final String suffix;
     private DocumentCreationCustomiser customiser = new DefaultDocumentCreationCustomiser(this);
 
     public MongoDocumentStore(DB db, DocumentMK.Builder builder) {
         this(db, builder, "");
     }
 
-    public MongoDocumentStore(DB db, DocumentMK.Builder builder, String prefix) {
-        this.prefix = prefix; 
+    public MongoDocumentStore(DB db, DocumentMK.Builder builder, String suffix) {
+        this.suffix = suffix; 
         
         String version = checkVersion(db);
         metadata = ImmutableMap.<String,String>builder()
@@ -273,8 +273,8 @@ public class MongoDocumentStore implements DocumentStore {
     private DBCollection getCollection(DB db, Collection<?> coll) {
         
         String collectionName = coll.toString();
-        if ( prefix != null && !prefix.isEmpty() ) {
-            collectionName = prefix + "_" + collectionName;
+        if ( suffix != null && !suffix.isEmpty() ) {
+            collectionName = collectionName + "_" + suffix;
         }
         
         return db.getCollection(collectionName);
