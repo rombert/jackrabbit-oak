@@ -158,4 +158,9 @@ public class DocumentStoreWrapper implements DocumentStore {
     public long determineServerTimeDifferenceMillis() {
         return store.determineServerTimeDifferenceMillis();
     }
+    
+    @Override
+    public void setDocumentCreationCustomiser(DocumentCreationCustomiser customiser) {
+        store.setDocumentCreationCustomiser(customiser);
+    }
 }
