@@ -16,30 +16,15 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-package org.apache.jackrabbit.oak.plugins.document.cache;
 
-import java.util.Map;
+package org.apache.jackrabbit.oak.spi.blob.split;
 
-import javax.annotation.Nullable;
+import java.io.IOException;
 
-import com.google.common.cache.Cache;
-import org.apache.jackrabbit.oak.cache.CacheStats;
-import org.apache.jackrabbit.oak.cache.CacheValue;
-import org.apache.jackrabbit.oak.plugins.document.CachedNodeDocument;
-import org.apache.jackrabbit.oak.plugins.document.NodeDocument;
+import org.apache.jackrabbit.oak.spi.blob.BlobStore;
 
-/**
- * An OffHeap cache manages the cache value in an off heap storage.
- *
- * This interface is required to avoid direct dependency on DirectMemory
- * and Kryo classes
- */
-public interface OffHeapCache extends Cache<CacheValue, NodeDocument> {
+public interface SplitBlobStore extends BlobStore {
 
-    Map<CacheValue, ? extends CachedNodeDocument> offHeapEntriesMap();
+    boolean isMigrated(String blobId) throws IOException;
 
-    CacheStats getCacheStats();
-
-    @Nullable
-    CachedNodeDocument getCachedDocument(String id);
 }

@@ -22,7 +22,6 @@ import static com.google.common.collect.Iterables.filter;
 import static com.google.common.collect.Iterables.toArray;
 import static com.google.common.collect.Iterables.transform;
 import static java.util.Collections.singletonList;
-import static org.apache.jackrabbit.oak.api.CommitFailedException.MERGE;
 import static org.apache.jackrabbit.oak.commons.PathUtils.concat;
 import static org.apache.jackrabbit.oak.plugins.document.Collection.JOURNAL;
 import static org.apache.jackrabbit.oak.plugins.document.Collection.NODES;
@@ -82,10 +81,9 @@ import org.apache.jackrabbit.oak.commons.json.JsopReader;
 import org.apache.jackrabbit.oak.commons.json.JsopTokenizer;
 import org.apache.jackrabbit.oak.plugins.blob.BlobStoreBlob;
 import org.apache.jackrabbit.oak.plugins.blob.MarkSweepGarbageCollector;
+import org.apache.jackrabbit.oak.plugins.blob.ReferencedBlob;
 import org.apache.jackrabbit.oak.plugins.document.Checkpoints.Info;
 import org.apache.jackrabbit.oak.plugins.document.cache.CacheInvalidationStats;
-import org.apache.jackrabbit.oak.plugins.document.mongo.MongoBlobReferenceIterator;
-import org.apache.jackrabbit.oak.plugins.document.mongo.MongoDocumentStore;
 import org.apache.jackrabbit.oak.plugins.document.persistentCache.PersistentCache;
 import org.apache.jackrabbit.oak.spi.blob.BlobStore;
 import org.apache.jackrabbit.oak.commons.json.JsopStream;
@@ -400,6 +398,8 @@ public final class DocumentNodeStore
     private final VersionGarbageCollector versionGarbageCollector;
 
     private final JournalGarbageCollector journalGarbageCollector;
+
+    private final Iterable<ReferencedBlob> referencedBlobs;
     
     private final Executor executor;
 
@@ -439,6 +439,9 @@ public final class DocumentNodeStore
         }
         if (builder.getLeaseCheck()) {
             s = new LeaseCheckDocumentStoreWrapper(s, clusterNodeInfo);
+            if (clusterNodeInfo!=null) {
+                clusterNodeInfo.setLeaseFailureHandler(builder.getLeaseFailureHandler());
+            }
         }
         this.store = s;
         this.clusterId = cid;
@@ -448,6 +451,7 @@ public final class DocumentNodeStore
         this.versionGarbageCollector = new VersionGarbageCollector(
                 this, builder.createVersionGCSupport());
         this.journalGarbageCollector = new JournalGarbageCollector(this);
+        this.referencedBlobs = builder.createReferencedBlobs(this);
         this.lastRevRecoveryAgent = new LastRevRecoveryAgent(this);
         this.disableBranches = builder.isDisableBranches();
         this.missing = new DocumentNodeState(this, "MISSING", new Revision(0, 0, 0)) {
@@ -510,12 +514,7 @@ public final class DocumentNodeStore
         getRevisionComparator().add(headRevision, Revision.newRevision(0));
 
         dispatcher = new ChangeDispatcher(getRoot());
-        commitQueue = new CommitQueue() {
-            @Override
-            protected Revision newRevision() {
-                return DocumentNodeStore.this.newRevision();
-            }
-        };
+        commitQueue = new CommitQueue(this);
         String threadNamePostfix = "(" + clusterId + ")";
         batchCommitQueue = new BatchCommitQueue(store, revisionComparator);
         backgroundReadThread = new Thread(
@@ -535,6 +534,10 @@ public final class DocumentNodeStore
                     new BackgroundLeaseUpdate(this, isDisposed),
                     "DocumentNodeStore lease update thread " + threadNamePostfix);
             leaseUpdateThread.setDaemon(true);
+            // OAK-3398 : make lease updating more robust by ensuring it
+            // has higher likelihood of succeeding than other threads
+            // on a very busy machine - so as to prevent lease timeout.
+            leaseUpdateThread.setPriority(Thread.MAX_PRIORITY);
             leaseUpdateThread.start();
         }
 
@@ -571,7 +574,17 @@ public final class DocumentNodeStore
 
         // do a final round of background operations after
         // the background thread stopped
-        internalRunBackgroundUpdateOperations();
+        try{
+            internalRunBackgroundUpdateOperations();
+        } catch(AssertionError ae) {
+            // OAK-3250 : when a lease check fails, subsequent modifying requests
+            // to the DocumentStore will throw an AssertionError. Since as a result
+            // of a failing lease check a bundle.stop is done and thus a dispose of the
+            // DocumentNodeStore happens, it is very likely that in that case 
+            // you run into an AssertionError. We should still continue with disposing
+            // though - thus catching and logging..
+            LOG.error("dispose: an AssertionError happened during dispose's last background ops: "+ae, ae);
+        }
 
         if (leaseUpdateThread != null) {
             try {
@@ -614,19 +627,6 @@ public final class DocumentNodeStore
     @Nonnull
     public DocumentStore getDocumentStore() {
         return store;
-    }
-
-    /**
-     * Create a new revision.
-     *
-     * @return the revision
-     */
-    @Nonnull
-    Revision newRevision() {
-        if (simpleRevisionCounter != null) {
-            return new Revision(simpleRevisionCounter.getAndIncrement(), 0, clusterId);
-        }
-        return Revision.newRevision(clusterId);
     }
 
     /**
@@ -700,6 +700,7 @@ public final class DocumentNodeStore
                         changes.modified(c.getModifiedPaths());
                         // update head revision
                         setHeadRevision(c.getRevision());
+                        commitQueue.headRevisionChanged();
                         dispatcher.contentChanged(getRoot(), info);
                     }
                 });
@@ -1382,8 +1383,10 @@ public final class DocumentNodeStore
                     b.applyTo(getPendingModifications(), commit.getRevision());
                     getBranches().remove(b);
                 } else {
-                    throw new CommitFailedException(MERGE, 2,
-                            "Conflicting concurrent change. Update operation failed: " + op);
+                    NodeDocument root = Utils.getRootDocument(store);
+                    Revision conflictRev = root.getMostRecentConflictFor(b.getCommits(), this);
+                    String msg = "Conflicting concurrent change. Update operation failed: " + op;
+                    throw new ConflictException(msg, conflictRev).asCommitFailedException();
                 }
             } else {
                 // no commits in this branch -> do nothing
@@ -1501,6 +1504,24 @@ public final class DocumentNodeStore
                 }
             };
         }
+    }
+
+    /**
+     * Suspends until the given revision is visible from the current
+     * headRevision or the given revision is canceled from the commit queue.
+     *
+     * The thread will *not* be suspended if the given revision is from a
+     * foreign cluster node and async delay is set to zero.
+     *
+     * @param r the revision to become visible.
+     */
+    void suspendUntil(@Nonnull Revision r) {
+        // do not suspend if revision is from another cluster node
+        // and background read is disabled
+        if (r.getClusterId() != getClusterId() && getAsyncDelay() == 0) {
+            return;
+        }
+        commitQueue.suspendUntil(r);
     }
 
     //------------------------< Observable >------------------------------------
@@ -1645,6 +1666,14 @@ public final class DocumentNodeStore
     @Nonnull
     public Revision getHeadRevision() {
         return headRevision;
+    }
+
+    @Nonnull
+    public Revision newRevision() {
+        if (simpleRevisionCounter != null) {
+            return new Revision(simpleRevisionCounter.getAndIncrement(), 0, clusterId);
+        }
+        return Revision.newRevision(clusterId);
     }
 
     //----------------------< background operations >---------------------------
@@ -1904,6 +1933,7 @@ public final class DocumentNodeStore
                     // the new head revision is after other revisions
                     setHeadRevision(newRevision());
                     if (dispatchChange) {
+                        commitQueue.headRevisionChanged();
                         time = clock.getTime();
                         if (externalSort != null) {
                             // then there were external changes and reading them
@@ -1911,7 +1941,7 @@ public final class DocumentNodeStore
                             try {
                                 JournalEntry.applyTo(externalSort, diffCache, oldHead, headRevision);
                             } catch (Exception e1) {
-                                LOG.error("backgroundRead: Exception while processing external changes from journal: "+e1, e1);
+                                LOG.error("backgroundRead: Exception while processing external changes from journal: {}", e1, e1);
                             }
                         }
                         stats.populateDiffCache = clock.getTime() - time;
@@ -2680,11 +2710,8 @@ public final class DocumentNodeStore
      * @see org.apache.jackrabbit.oak.plugins.document.mongo.MongoBlobReferenceIterator
      * @return an iterator for all the blobs
      */
-    public Iterator<Blob> getReferencedBlobsIterator() {
-        if(store instanceof MongoDocumentStore){
-            return new MongoBlobReferenceIterator(this, (MongoDocumentStore) store);
-        }
-        return new BlobReferenceIterator(this);
+    public Iterator<ReferencedBlob> getReferencedBlobsIterator() {
+        return referencedBlobs.iterator();
     }
 
     public DiffCache getDiffCache() {

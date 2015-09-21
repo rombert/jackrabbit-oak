@@ -27,6 +27,7 @@ import static org.apache.jackrabbit.oak.plugins.document.DocumentMK.Builder.DEFA
 import static org.apache.jackrabbit.oak.plugins.document.DocumentMK.Builder.DEFAULT_DIFF_CACHE_PERCENTAGE;
 import static org.apache.jackrabbit.oak.plugins.document.DocumentMK.Builder.DEFAULT_DOC_CHILDREN_CACHE_PERCENTAGE;
 import static org.apache.jackrabbit.oak.plugins.document.DocumentMK.Builder.DEFAULT_NODE_CACHE_PERCENTAGE;
+import static org.apache.jackrabbit.oak.spi.blob.osgi.SplitBlobStoreService.ONLY_STANDALONE_TARGET;
 import static org.apache.jackrabbit.oak.spi.whiteboard.WhiteboardUtils.registerMBean;
 
 import java.io.ByteArrayInputStream;
@@ -76,6 +77,7 @@ import org.apache.jackrabbit.oak.plugins.blob.datastore.SharedDataStoreUtils;
 import org.apache.jackrabbit.oak.plugins.document.util.MongoConnection;
 import org.apache.jackrabbit.oak.plugins.identifier.ClusterRepositoryInfo;
 import org.apache.jackrabbit.oak.spi.blob.BlobStore;
+import org.apache.jackrabbit.oak.spi.blob.BlobStoreWrapper;
 import org.apache.jackrabbit.oak.spi.blob.GarbageCollectableBlobStore;
 import org.apache.jackrabbit.oak.spi.state.NodeStore;
 import org.apache.jackrabbit.oak.spi.state.RevisionGC;
@@ -84,6 +86,8 @@ import org.apache.jackrabbit.oak.spi.whiteboard.Registration;
 import org.apache.jackrabbit.oak.spi.whiteboard.Whiteboard;
 import org.apache.jackrabbit.oak.spi.whiteboard.WhiteboardExecutor;
 import org.apache.jackrabbit.oak.spi.whiteboard.WhiteboardUtils;
+import org.osgi.framework.Bundle;
+import org.osgi.framework.BundleException;
 import org.osgi.framework.Constants;
 import org.osgi.framework.ServiceRegistration;
 import org.osgi.service.component.ComponentContext;
@@ -105,7 +109,6 @@ import org.slf4j.LoggerFactory;
 public class DocumentNodeStoreService {
     private static final String DEFAULT_URI = "mongodb://localhost:27017/oak";
     private static final int DEFAULT_CACHE = 256;
-    private static final int DEFAULT_OFF_HEAP_CACHE = 0;
     private static final int DEFAULT_BLOB_CACHE_SIZE = 16;
     private static final String DEFAULT_DB = "oak";
     private static final String DEFAULT_PERSISTENT_CACHE = "";
@@ -187,8 +190,6 @@ public class DocumentNodeStoreService {
     )
     private static final String PROP_CACHE_STACK_MOVE_DISTANCE = "cacheStackMoveDistance";
 
-    private static final String PROP_OFF_HEAP_CACHE = "offHeapCache";
-
     @Property(intValue =  DEFAULT_BLOB_CACHE_SIZE,
             label = "Blob Cache Size (in MB)",
             description = "Cache size to store blobs in memory. Used only with default BlobStore " +
@@ -255,7 +256,7 @@ public class DocumentNodeStoreService {
     private WhiteboardExecutor executor;
 
     @Reference(cardinality = ReferenceCardinality.OPTIONAL_UNARY,
-            policy = ReferencePolicy.DYNAMIC)
+            policy = ReferencePolicy.DYNAMIC, target = ONLY_STANDALONE_TARGET)
     private volatile BlobStore blobStore;
 
     @Reference(cardinality = ReferenceCardinality.OPTIONAL_UNARY,
@@ -357,7 +358,6 @@ public class DocumentNodeStoreService {
         String uri = PropertiesUtil.toString(prop(PROP_URI, FWK_PROP_URI), DEFAULT_URI);
         String db = PropertiesUtil.toString(prop(PROP_DB, FWK_PROP_DB), DEFAULT_DB);
 
-        int offHeapCache = toInteger(prop(PROP_OFF_HEAP_CACHE), DEFAULT_OFF_HEAP_CACHE);
         int cacheSize = toInteger(prop(PROP_CACHE), DEFAULT_CACHE);
         int nodeCachePercentage = toInteger(prop(PROP_NODE_CACHE_PERCENTAGE), DEFAULT_NODE_CACHE_PERCENTAGE);
         int childrenCachePercentage = toInteger(prop(PROP_CHILDREN_CACHE_PERCENTAGE), DEFAULT_CHILDREN_CACHE_PERCENTAGE);
@@ -379,15 +379,37 @@ public class DocumentNodeStoreService {
                         diffCachePercentage).
                 setCacheSegmentCount(cacheSegmentCount).
                 setCacheStackMoveDistance(cacheStackMoveDistance).
-                offHeapCacheSize(offHeapCache * MB).
-                setLeaseCheck(true /* OAK-2739: enabled by default */);
+                setLeaseCheck(true /* OAK-2739: enabled by default */).
+                setLeaseFailureHandler(new LeaseFailureHandler() {
+                    
+                    @Override
+                    public void handleLeaseFailure() {
+                        try {
+                            // plan A: try stopping oak-core
+                            log.error("handleLeaseFailure: stopping oak-core...");
+                            Bundle bundle = context.getBundleContext().getBundle();
+                            bundle.stop();
+                            log.error("handleLeaseFailure: stopped oak-core.");
+                            // plan A worked, perfect!
+                        } catch (BundleException e) {
+                            log.error("handleLeaseFailure: exception while stopping oak-core: "+e, e);
+                            // plan B: stop only DocumentNodeStoreService (to stop the background threads)
+                            log.error("handleLeaseFailure: stopping DocumentNodeStoreService...");
+                            context.disableComponent(DocumentNodeStoreService.class.getName());
+                            log.error("handleLeaseFailure: stopped DocumentNodeStoreService");
+                            // plan B succeeded.
+                        }
+                    }
+                });
 
         if (persistentCache != null && persistentCache.length() > 0) {
             mkBuilder.setPersistentCache(persistentCache);
         }
 
+        boolean wrappingCustomBlobStore = customBlobStore && blobStore instanceof BlobStoreWrapper;
+
         //Set blobstore before setting the DB
-        if (customBlobStore) {
+        if (customBlobStore && !wrappingCustomBlobStore) {
             checkNotNull(blobStore, "Use of custom BlobStore enabled via  [%s] but blobStore reference not " +
                     "initialized", CUSTOM_BLOB_STORE);
             mkBuilder.setBlobStore(blobStore);
@@ -447,6 +469,12 @@ public class DocumentNodeStoreService {
             mkBuilder.setMongoDB(mongoDB, blobCacheSize);
 
             log.info("Connected to database {}", mongoDB);
+        }
+
+        //Set wrapping blob store after setting the DB
+        if (wrappingCustomBlobStore) {
+            ((BlobStoreWrapper) blobStore).setBlobStore(mkBuilder.getBlobStore());
+            mkBuilder.setBlobStore(blobStore);
         }
 
         mkBuilder.setExecutor(executor);
@@ -554,13 +582,16 @@ public class DocumentNodeStoreService {
         for (Registration r : registrations) {
             r.unregister();
         }
+        registrations.clear();
 
         if (reg != null) {
             reg.unregister();
+            reg = null;
         }
 
         if (mk != null) {
             mk.dispose();
+            mk = null;
         }
 
         if (executor != null) {

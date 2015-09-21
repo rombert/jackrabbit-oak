@@ -19,7 +19,11 @@ package org.apache.jackrabbit.oak.plugins.document;
 import static com.google.common.base.Preconditions.checkArgument;
 
 import java.io.InputStream;
+<<<<<<< HEAD
 import java.util.List;
+=======
+import java.util.Iterator;
+>>>>>>> trunk
 import java.util.Set;
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
@@ -44,8 +48,10 @@ import org.apache.jackrabbit.oak.commons.PathUtils;
 import org.apache.jackrabbit.oak.commons.json.JsopReader;
 import org.apache.jackrabbit.oak.commons.json.JsopStream;
 import org.apache.jackrabbit.oak.commons.json.JsopTokenizer;
+import org.apache.jackrabbit.oak.plugins.blob.ReferencedBlob;
 import org.apache.jackrabbit.oak.plugins.document.DocumentNodeState.Children;
 import org.apache.jackrabbit.oak.plugins.document.memory.MemoryDocumentStore;
+import org.apache.jackrabbit.oak.plugins.document.mongo.MongoBlobReferenceIterator;
 import org.apache.jackrabbit.oak.plugins.document.mongo.MongoBlobStore;
 import org.apache.jackrabbit.oak.plugins.document.mongo.MongoDocumentStore;
 import org.apache.jackrabbit.oak.plugins.document.mongo.MongoVersionGCSupport;
@@ -488,7 +494,6 @@ public class DocumentMK {
         private int cacheSegmentCount = DEFAULT_CACHE_SEGMENT_COUNT;
         private int cacheStackMoveDistance = DEFAULT_CACHE_STACK_MOVE_DISTANCE;
         private boolean useSimpleRevision;
-        private long offHeapCacheSize = -1;
         private long maxReplicationLagMillis = TimeUnit.HOURS.toMillis(6);
         private boolean disableBranches;
         private Clock clock = Clock.SIMPLE;
@@ -496,6 +501,7 @@ public class DocumentMK {
         private String persistentCacheURI = DEFAULT_PERSISTENT_CACHE_URI;
         private PersistentCache persistentCache;
         private List<MongoDbMount> mounts = Lists.newArrayList();
+        private LeaseFailureHandler leaseFailureHandler;
 
         public Builder() {
             
@@ -655,6 +661,15 @@ public class DocumentMK {
             return leaseCheck;
         }
 
+        public Builder setLeaseFailureHandler(LeaseFailureHandler leaseFailureHandler) {
+            this.leaseFailureHandler = leaseFailureHandler;
+            return this;
+        }
+        
+        public LeaseFailureHandler getLeaseFailureHandler() {
+            return leaseFailureHandler;
+        }
+        
         /**
          * Set the document store to use. By default an in-memory store is used.
          *
@@ -821,19 +836,6 @@ public class DocumentMK {
             return useSimpleRevision;
         }
 
-        public boolean useOffHeapCache() {
-            return this.offHeapCacheSize > 0;
-        }
-
-        public long getOffHeapCacheSize() {
-            return offHeapCacheSize;
-        }
-
-        public Builder offHeapCacheSize(long offHeapCacheSize) {
-            this.offHeapCacheSize = offHeapCacheSize;
-            return this;
-        }
-
         public Executor getExecutor() {
             if(executor == null){
                 return MoreExecutors.sameThreadExecutor();
@@ -880,6 +882,19 @@ public class DocumentMK {
             } else {
                 return new VersionGCSupport(store);
             }
+        }
+
+        Iterable<ReferencedBlob> createReferencedBlobs(final DocumentNodeStore ns) {
+            final DocumentStore store = getDocumentStore();
+            return new Iterable<ReferencedBlob>() {
+                @Override
+                public Iterator<ReferencedBlob> iterator() {
+                    if(store instanceof MongoDocumentStore){
+                        return new MongoBlobReferenceIterator(ns, (MongoDocumentStore) store);
+                    }
+                    return new BlobReferenceIterator(ns);
+                }
+            };
         }
 
         /**

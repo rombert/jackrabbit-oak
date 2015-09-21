@@ -246,20 +246,6 @@
       <optional>true</optional>
     </dependency>
 
-    <!-- Required for OffHeap storage and serialization-->
-    <dependency>
-      <groupId>com.esotericsoftware.kryo</groupId>
-      <artifactId>kryo</artifactId>
-      <version>2.22</version>
-      <optional>true</optional>
-    </dependency>
-    <dependency>
-      <groupId>org.apache.directmemory</groupId>
-      <artifactId>directmemory-cache</artifactId>
-      <version>0.2</version>
-      <optional>true</optional>
-    </dependency>
-    
     <!-- Required for the persistent cache -->
     <dependency>
       <groupId>com.h2database</groupId>
@@ -288,13 +274,6 @@
       <groupId>org.apache.jackrabbit</groupId>
       <artifactId>jackrabbit-data</artifactId>
       <version>${jackrabbit.version}</version>
-      <optional>true</optional>
-    </dependency>
-
-    <dependency>
-      <groupId>commons-dbcp</groupId>
-      <artifactId>commons-dbcp</artifactId>
-      <version>1.4</version>
       <optional>true</optional>
     </dependency>
 
@@ -363,6 +342,12 @@
     <dependency>
       <groupId>org.apache.commons</groupId>
       <artifactId>commons-math3</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.tomcat</groupId>
+      <artifactId>tomcat-jdbc</artifactId>
+      <version>7.0.64</version>
       <scope>test</scope>
     </dependency>
   </dependencies>
