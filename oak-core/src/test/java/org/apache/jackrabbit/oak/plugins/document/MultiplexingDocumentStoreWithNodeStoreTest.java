@@ -38,7 +38,7 @@ public class MultiplexingDocumentStoreWithNodeStoreTest {
         
         // 2. configure the DocumentNodeStore with a multiplexing document store, with a mount at "/tmp"
         DocumentMK.Builder builder = new DocumentMK.Builder();
-        builder.addMongoDbMount("/tmp", connection.getDB(), "private");
+        builder.addMongoDbMount("/tmp", "mongodb://localhost:27017/oak", "oak", "private");
         builder.setMongoDB(connection.getDB(), 1);
 
         DocumentNodeStore store = new DocumentNodeStore(builder);
@@ -107,41 +107,45 @@ public class MultiplexingDocumentStoreWithNodeStoreTest {
         
         @Override
         public void initDocumentMK() {
-            boolean useMultiplexing = true;
-            boolean dropDatabase = true;
-            
-            String db = "oak-test-mpx-" + useMultiplexing;
-            String uri = "mongodb://localhost:27017/" + db;
-            
-            DocumentMK.Builder mkBuilder = new DocumentMK.Builder();
-
-            MongoClientOptions.Builder builder = MongoConnection.getDefaultBuilder();
-            MongoClientURI mongoURI = new MongoClientURI(uri, builder);
-
-            MongoClient client;
             try {
-                client = new MongoClient(mongoURI);
+                boolean useMultiplexing = true;
+                boolean dropDatabase = true;
+                
+                String db = "oak-test-mpx-" + useMultiplexing;
+                String uri = "mongodb://localhost:27017/" + db;
+                
+                DocumentMK.Builder mkBuilder = new DocumentMK.Builder();
+
+                MongoClientOptions.Builder builder = MongoConnection.getDefaultBuilder();
+                MongoClientURI mongoURI = new MongoClientURI(uri, builder);
+
+                MongoClient client;
+                try {
+                    client = new MongoClient(mongoURI);
+                } catch (UnknownHostException e) {
+                    throw new RuntimeException(e);
+                }
+                DB mongoDB = client.getDB(db);
+
+                if ( dropDatabase) {
+                    mongoDB.dropDatabase();
+                }
+
+                if ( useMultiplexing ) {
+                    Map<String, String> mounts = Maps.newLinkedHashMap();
+                    mounts.put("/extra", "extra");
+                    
+                    for (Map.Entry<String, String> entry : mounts.entrySet()) {
+                        mkBuilder.addMongoDbMount(entry.getKey(), uri, db, entry.getValue());
+                    }
+                }
+
+                mkBuilder.setMongoDB(uri, db, 256);
+
+                mk = mkBuilder.open();
             } catch (UnknownHostException e) {
                 throw new RuntimeException(e);
-            }
-            DB mongoDB = client.getDB(db);
-
-            if ( dropDatabase) {
-                mongoDB.dropDatabase();
-            }
-
-            if ( useMultiplexing ) {
-                Map<String, String> mounts = Maps.newLinkedHashMap();
-                mounts.put("/extra", "extra");
-                
-                for (Map.Entry<String, String> entry : mounts.entrySet()) {
-                    mkBuilder.addMongoDbMount(entry.getKey(), mongoDB, entry.getValue());
-                }
-            }
-
-            mkBuilder.setMongoDB(mongoDB, 256);
-
-            mk = mkBuilder.open();                
+            }                
         }
     }
 }

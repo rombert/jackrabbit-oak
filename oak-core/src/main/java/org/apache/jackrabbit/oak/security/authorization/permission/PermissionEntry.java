@@ -65,19 +65,19 @@ final class PermissionEntry implements Comparable<PermissionEntry>, PermissionCo
         this.restriction = restriction;
     }
 
-    public boolean matches(@Nonnull Tree tree, @Nullable PropertyState property) {
+    boolean matches(@Nonnull Tree tree, @Nullable PropertyState property) {
         return restriction == RestrictionPattern.EMPTY || restriction.matches(tree, property);
     }
 
-    public boolean matches(@Nonnull String treePath) {
+    boolean matches(@Nonnull String treePath) {
         return restriction == RestrictionPattern.EMPTY || restriction.matches(treePath);
     }
 
-    public boolean matches() {
+    boolean matches() {
         return restriction == RestrictionPattern.EMPTY || restriction.matches();
     }
 
-    public boolean matchesParent(@Nonnull String parentPath) {
+    boolean matchesParent(@Nonnull String parentPath) {
         return Text.isDescendantOrEqual(path, parentPath) && (restriction == RestrictionPattern.EMPTY || restriction.matches(parentPath));
     }
 
@@ -121,17 +121,5 @@ final class PermissionEntry implements Comparable<PermissionEntry>, PermissionCo
     @Override
     public int hashCode() {
         return Objects.hashCode(privilegeBits, index, path, isAllow, restriction);
-    }
-
-    @Override
-    public String toString() {
-        final StringBuilder sb = new StringBuilder("PermissionEntry{");
-        sb.append("isAllow=").append(isAllow);
-        sb.append(", privilegeBits=").append(privilegeBits);
-        sb.append(", index=").append(index);
-        sb.append(", path='").append(path).append('\'');
-        sb.append(", restriction=").append(restriction);
-        sb.append('}');
-        return sb.toString();
     }
 }

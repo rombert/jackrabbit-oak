@@ -29,7 +29,6 @@ import org.apache.felix.scr.annotations.ReferencePolicy;
 import org.apache.felix.scr.annotations.References;
 import org.apache.jackrabbit.oak.commons.PropertiesUtil;
 import org.apache.jackrabbit.oak.osgi.OsgiWhiteboard;
-import org.apache.jackrabbit.oak.security.SecurityProviderImpl;
 import org.apache.jackrabbit.oak.security.user.UserConfigurationImpl;
 import org.apache.jackrabbit.oak.spi.security.ConfigurationBase;
 import org.apache.jackrabbit.oak.spi.security.ConfigurationParameters;
@@ -60,6 +59,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
+import java.util.Dictionary;
+import java.util.Hashtable;
 import java.util.List;
 import java.util.Map;
 
@@ -81,12 +82,11 @@ import static com.google.common.collect.Lists.newCopyOnWriteArrayList;
                         "registered first. Only the PIDs of implementations of " +
                         "the following interfaces are checked: " +
                         "PrincipalConfiguration, TokenConfiguration, " +
-                        "AuthorizableNodeName, AuthorizableActionProvider, " +
+                        "AuthorizableActionProvider, " +
                         "RestrictionProvider and UserAuthenticationFactory.",
                 value = {
                         "org.apache.jackrabbit.oak.security.principal.PrincipalConfigurationImpl",
                         "org.apache.jackrabbit.oak.security.authentication.token.TokenConfigurationImpl",
-                        "org.apache.jackrabbit.oak.security.user.RandomAuthorizableNodeName",
                         "org.apache.jackrabbit.oak.spi.security.user.action.DefaultAuthorizableActionProvider",
                         "org.apache.jackrabbit.oak.security.authorization.restriction.RestrictionProviderImpl",
                         "org.apache.jackrabbit.oak.security.user.UserAuthenticationFactoryImpl"
@@ -418,10 +418,14 @@ public class SecurityProviderRegistration {
 
         // Register the SecurityProvider.
 
+        Dictionary<String, Object> properties = new Hashtable<String, Object>();
+
+        properties.put("type", "default");
+
         ServiceRegistration registration = context.registerService(
                 SecurityProvider.class.getName(),
                 createSecurityProvider(context),
-                null
+                properties
         );
 
         synchronized (this) {
@@ -466,7 +470,7 @@ public class SecurityProviderRegistration {
     }
 
     private SecurityProvider createSecurityProvider(BundleContext context) {
-        SecurityProviderImpl securityProvider = new SecurityProviderImpl();
+        InternalSecurityProvider securityProvider = new InternalSecurityProvider();
 
         // Static, mandatory references
 
@@ -492,7 +496,7 @@ public class SecurityProviderRegistration {
 
             @Override
             protected List<PrincipalConfiguration> getConfigurations() {
-                ArrayList<PrincipalConfiguration> configurations = newArrayList(newArrayList(principalConfigurations));
+                ArrayList<PrincipalConfiguration> configurations = newArrayList(principalConfigurations);
 
                 for (PrincipalConfiguration configuration : configurations) {
                     initializeConfiguration(getSecurityProvider(), configuration);

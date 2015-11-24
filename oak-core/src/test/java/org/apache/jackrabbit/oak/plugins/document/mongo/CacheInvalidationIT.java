@@ -27,7 +27,6 @@ import org.apache.jackrabbit.oak.plugins.document.AbstractMongoConnectionTest;
 import org.apache.jackrabbit.oak.plugins.document.Collection;
 import org.apache.jackrabbit.oak.plugins.document.DocumentMK;
 import org.apache.jackrabbit.oak.plugins.document.DocumentNodeStore;
-import org.apache.jackrabbit.oak.plugins.document.MongoUtils;
 import org.apache.jackrabbit.oak.plugins.document.util.MongoConnection;
 import org.apache.jackrabbit.oak.plugins.document.util.Utils;
 import org.apache.jackrabbit.oak.spi.commit.CommitInfo;
@@ -39,7 +38,6 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
-import static org.apache.jackrabbit.oak.plugins.document.mongo.CacheInvalidator.InvalidationResult;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
@@ -53,8 +51,10 @@ public class CacheInvalidationIT extends AbstractMongoConnectionTest {
 
     @Before
     public void prepareStores() throws Exception {
-        c1 = createNS(1);
-        c2 = createNS(2);
+        // TODO start with clusterNodeId 2, because 1 has already been
+        // implicitly allocated in the base class
+        c1 = createNS(2);
+        c2 = createNS(3);
         initialCacheSizeC1 = getCurrentCacheSize(c1);
         initialCacheSizeC2 = getCurrentCacheSize(c2);
     }
@@ -108,37 +108,7 @@ public class CacheInvalidationIT extends AbstractMongoConnectionTest {
         assertEquals(initialCacheSizeC1+ totalPaths - 2, Iterables.size(ds(c1).getCacheEntries()));
     }
 
-    @Test
-    public void testCacheInvalidationHierarchical()
-            throws CommitFailedException {
-        final int totalPaths = createScenario();
 
-        NodeBuilder b2 = getRoot(c2).builder();
-        builder(b2, "/a/c").setProperty("foo", "bar");
-        c2.merge(b2, EmptyHook.INSTANCE, CommitInfo.EMPTY);
-
-        //Push pending changes at /a
-        c2.runBackgroundOperations();
-
-        //Refresh the head for c1
-        refreshHead(c1);
-
-        InvalidationResult result = CacheInvalidator.createHierarchicalInvalidator(ds(c1)).invalidateCache();
-
-        //Only 2 entries /a and /a/d would be invalidated
-        // '/' would have been added to cache in start of backgroundRead
-        //itself
-        assertEquals(2, result.invalidationCount);
-
-        //All excluding /a and /a/d would be updated. Also we exclude / from processing
-        assertEquals(initialCacheSizeC1 + totalPaths - 3, result.upToDateCount);
-
-        //3 queries would be fired for [/] [/a] [/a/b, /a/c, /a/d]
-        assertEquals(2, result.queryCount);
-
-        //Query would only have been done for first two levels /a and /a/b, /a/c, /a/d
-        assertEquals(4, result.cacheEntriesProcessedCount);
-    }
 
     @Test
     public void testCacheInvalidationHierarchicalNotExist()
@@ -174,38 +144,6 @@ public class CacheInvalidationIT extends AbstractMongoConnectionTest {
         // both nodes should now be visible
         assertTrue(getRoot(c1).getChildNode("y").getChildNode("futureY").exists());
         assertTrue(getRoot(c1).getChildNode("x").getChildNode("futureX").exists());
-
-    }
-
-    @Test
-    public void testCacheInvalidationLinear() throws CommitFailedException {
-        final int totalPaths = createScenario();
-
-        NodeBuilder b2 = getRoot(c2).builder();
-        builder(b2, "/a/c").setProperty("foo", "bar");
-        c2.merge(b2, EmptyHook.INSTANCE, CommitInfo.EMPTY);
-
-        //Push pending changes at /a
-        c2.runBackgroundOperations();
-
-        //Refresh the head for c1
-        refreshHead(c1);
-
-        InvalidationResult result = CacheInvalidator.createLinearInvalidator(ds(c1)).invalidateCache();
-
-        //Only 2 entries /a and /a/d would be invalidated
-        // '/' would have been added to cache in start of backgroundRead
-        //itself
-        assertEquals(2, result.invalidationCount);
-
-        //All excluding /a and /a/d would be updated
-        assertEquals(initialCacheSizeC1 + totalPaths - 2, result.upToDateCount);
-
-        //Only one query would be fired
-        assertEquals(1, result.queryCount);
-
-        //Query would be done for all the cache entries
-        assertEquals(initialCacheSizeC1 + totalPaths, result.cacheEntriesProcessedCount);
 
     }
 
@@ -247,8 +185,12 @@ public class CacheInvalidationIT extends AbstractMongoConnectionTest {
 
     @After
     public void closeStores() {
-        c1.dispose();
-        c2.dispose();
+        if (c2 != null) {
+            c2.dispose();
+        }
+        if (c1 != null) {
+            c1.dispose();
+        }
     }
 
     private static void runBgOps(DocumentNodeStore... stores) {
@@ -257,8 +199,8 @@ public class CacheInvalidationIT extends AbstractMongoConnectionTest {
         }
     }
 
-    private static DocumentNodeStore createNS(int clusterId) throws Exception {
-        MongoConnection mc = MongoUtils.getConnection();
+    private DocumentNodeStore createNS(int clusterId) throws Exception {
+        MongoConnection mc = connectionFactory.getConnection();
         return new DocumentMK.Builder()
                           .setMongoDB(mc.getDB())
                           .setClusterId(clusterId)

@@ -20,6 +20,7 @@ import static com.google.common.base.Preconditions.checkArgument;
 
 import java.io.InputStream;
 import java.util.List;
+import java.net.UnknownHostException;
 import java.util.Iterator;
 import java.util.Set;
 import java.util.concurrent.Executor;
@@ -45,12 +46,14 @@ import org.apache.jackrabbit.oak.commons.PathUtils;
 import org.apache.jackrabbit.oak.commons.json.JsopReader;
 import org.apache.jackrabbit.oak.commons.json.JsopStream;
 import org.apache.jackrabbit.oak.commons.json.JsopTokenizer;
+import org.apache.jackrabbit.oak.json.JsopDiff;
 import org.apache.jackrabbit.oak.plugins.blob.ReferencedBlob;
 import org.apache.jackrabbit.oak.plugins.document.DocumentNodeState.Children;
 import org.apache.jackrabbit.oak.plugins.document.memory.MemoryDocumentStore;
 import org.apache.jackrabbit.oak.plugins.document.mongo.MongoBlobReferenceIterator;
 import org.apache.jackrabbit.oak.plugins.document.mongo.MongoBlobStore;
 import org.apache.jackrabbit.oak.plugins.document.mongo.MongoDocumentStore;
+import org.apache.jackrabbit.oak.plugins.document.mongo.MongoMissingLastRevSeeker;
 import org.apache.jackrabbit.oak.plugins.document.mongo.MongoVersionGCSupport;
 import org.apache.jackrabbit.oak.plugins.document.persistentCache.CacheType;
 import org.apache.jackrabbit.oak.plugins.document.persistentCache.PersistentCache;
@@ -129,7 +132,7 @@ public class DocumentMK {
     }
 
     void backgroundRead() {
-        nodeStore.backgroundRead(true);
+        nodeStore.backgroundRead();
     }
 
     void backgroundWrite() {
@@ -174,11 +177,21 @@ public class DocumentMK {
         if (path == null || path.equals("")) {
             path = "/";
         }
-        try {
-            return nodeStore.diff(fromRevisionId, toRevisionId, path);
-        } catch (DocumentStoreException e) {
-            throw new DocumentStoreException(e);
+        Revision fromRev = Revision.fromString(fromRevisionId);
+        Revision toRev = Revision.fromString(toRevisionId);
+        final DocumentNodeState before = nodeStore.getNode(path, fromRev);
+        final DocumentNodeState after = nodeStore.getNode(path, toRev);
+        if (before == null || after == null) {
+            // TODO implement correct behavior if the node doesn't/didn't exist
+            String msg = String.format("Diff is only supported if the node exists in both cases. " +
+                            "Node [%s], fromRev [%s] -> %s, toRev [%s] -> %s",
+                    path, fromRev, before != null, toRev, after != null);
+            throw new DocumentStoreException(msg);
         }
+
+        JsopDiff diff = new JsopDiff(path, depth);
+        after.compareAgainstBaseState(before, diff);
+        return diff.toString();
     }
 
     public boolean nodeExists(String path, String revisionId)
@@ -511,13 +524,21 @@ public class DocumentMK {
          * <p>Must be called before {@link #setMongoDB(DB, int, int)} to have effect.</p>
          * 
          * @param mountPath the path where the collection will be mounted, e.g. <tt>/etc</tt>
-         * @param connection the MongoDB connection
+         * @param uri a MongoDB URI.
+         * @param name the name of the database to connect to. This overrides
+         *             any database name given in the {@code uri}.
          * @param collectionPrefix the prefix to be used for the collection name
+         * @throws UnknownHostException if one of the hosts given in the URI
+         *          is unknown.
          */
-        public void addMongoDbMount(String mountPath, DB db, String collectionPrefix) {
+        public void addMongoDbMount(String mountPath, @Nonnull String uri,
+                @Nonnull String name, String collectionPrefix) throws UnknownHostException {
             MongoDbMount m = new MongoDbMount();
             m.mountPath = mountPath;
-            m.db = db;
+            m.db = new MongoConnection(uri).getDB(name);
+            if (!MongoConnection.hasWriteConcern(uri)) {
+                m.db.setWriteConcern(MongoConnection.getDefaultWriteConcern(m.db));
+            }
             m.colectionPrefix = collectionPrefix;
             
             mounts.add(m);
@@ -525,53 +546,86 @@ public class DocumentMK {
 
 
         /**
+         * Uses the given information to connect to to MongoDB as backend
+         * storage for the DocumentNodeStore. The write concern is either
+         * taken from the URI or determined automatically based on the MongoDB
+         * setup. When running on a replica set without explicit write concern
+         * in the URI, the write concern will be {@code MAJORITY}, otherwise
+         * {@code ACKNOWLEDGED}.
+         *
+         * @param uri a MongoDB URI.
+         * @param name the name of the database to connect to. This overrides
+         *             any database name given in the {@code uri}.
+         * @param blobCacheSizeMB the blob cache size in MB.
+         * @return this
+         * @throws UnknownHostException if one of the hosts given in the URI
+         *          is unknown.
+         */
+        public Builder setMongoDB(@Nonnull String uri,
+                                  @Nonnull String name,
+                                  int blobCacheSizeMB)
+                throws UnknownHostException {
+            DB db = new MongoConnection(uri).getDB(name);
+            if (!MongoConnection.hasWriteConcern(uri)) {
+                db.setWriteConcern(MongoConnection.getDefaultWriteConcern(db));
+            }
+            setMongoDB(db, blobCacheSizeMB);
+            return this;
+        }
+
+        /**
          * Use the given MongoDB as backend storage for the DocumentNodeStore.
          *
          * @param db the MongoDB connection
          * @return this
          */
-        public Builder setMongoDB(DB db, int blobCacheSizeMB) {
-            if (db != null) {
-                if (this.documentStore == null) {
+        public Builder setMongoDB(@Nonnull DB db,
+                int blobCacheSizeMB) {
+    
+            if (!MongoConnection.hasSufficientWriteConcern(db)) {
+                LOG.warn("Insufficient write concern: " + db.getWriteConcern()
+                        + " At least " + MongoConnection.getDefaultWriteConcern(db) + " is recommended.");
+            }
+    
+            if (this.documentStore == null) {
+                
+                if ( mounts.size() > 0 ) {
+                
+                    MongoDocumentStore root = new MongoDocumentStore(db, this);
                     
-                    if ( mounts.size() > 0 ) {
+                    MultiplexingDocumentStore.Builder builder = new MultiplexingDocumentStore.Builder();
+                    builder.root(root);
                     
-                        MongoDocumentStore root = new MongoDocumentStore(db, this);
-                        
-                        MultiplexingDocumentStore.Builder builder = new MultiplexingDocumentStore.Builder();
-                        builder.root(root);
-                        
-                        for ( MongoDbMount mount : mounts ) {
-                            MongoDocumentStore store = new MongoDocumentStore(mount.db, this, mount.colectionPrefix);
-                            builder.mount(mount.mountPath, store);
-                        }
-                        
-                        this.documentStore = builder.build();
-
-                    } else {
-                        this.documentStore = new MongoDocumentStore(db, this);
+                    for ( MongoDbMount mount : mounts ) {
+                        MongoDocumentStore store = new MongoDocumentStore(mount.db, this, mount.colectionPrefix);
+                        builder.mount(mount.mountPath, store);
                     }
-                }
+                    
+                    this.documentStore = builder.build();
 
-                if (this.blobStore == null) {
-                    GarbageCollectableBlobStore s = new MongoBlobStore(db, blobCacheSizeMB * 1024 * 1024L);
-                    PersistentCache p = getPersistentCache();
-                    if (p != null) {
-                        s = p.wrapBlobStore(s);
-                    }
-                    this.blobStore = s;
+                } else {
+                    this.documentStore = new MongoDocumentStore(db, this);
                 }
+            }
+
+            if (this.blobStore == null) {
+                GarbageCollectableBlobStore s = new MongoBlobStore(db, blobCacheSizeMB * 1024 * 1024L);
+                PersistentCache p = getPersistentCache();
+                if (p != null) {
+                    s = p.wrapBlobStore(s);
+                }
+                this.blobStore = s;
             }
             return this;
         }
 
         /**
-         * Set the MongoDB connection to use. By default an in-memory store is used.
+         * Use the given MongoDB as backend storage for the DocumentNodeStore.
          *
          * @param db the MongoDB connection
          * @return this
          */
-        public Builder setMongoDB(DB db) {
+        public Builder setMongoDB(@Nonnull DB db) {
             return setMongoDB(db, 16);
         }
 
@@ -892,6 +946,15 @@ public class DocumentMK {
                     return new BlobReferenceIterator(ns);
                 }
             };
+        }
+
+        public MissingLastRevSeeker createMissingLastRevSeeker() {
+            final DocumentStore store = getDocumentStore();
+            if (store instanceof MongoDocumentStore) {
+                return new MongoMissingLastRevSeeker((MongoDocumentStore) store);
+            } else {
+                return new MissingLastRevSeeker(store);
+            }
         }
 
         /**

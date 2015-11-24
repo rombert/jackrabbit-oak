@@ -36,7 +36,6 @@ import java.util.ArrayList;
 import java.util.Dictionary;
 import java.util.HashMap;
 import java.util.Hashtable;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -46,11 +45,7 @@ import javax.sql.DataSource;
 
 import com.google.common.base.Preconditions;
 import com.google.common.base.Splitter;
-import com.google.common.collect.Iterables;
 import com.google.common.collect.Maps;
-import com.mongodb.DB;
-import com.mongodb.MongoClient;
-import com.mongodb.MongoClientOptions;
 import com.mongodb.MongoClientURI;
 
 import org.apache.felix.scr.annotations.Activate;
@@ -275,6 +270,7 @@ public class DocumentNodeStoreService {
     private ObserverTracker observerTracker;
     private ComponentContext context;
     private Whiteboard whiteboard;
+    private long deactivationTimestamp = 0;
 
 
     /**
@@ -341,7 +337,10 @@ public class DocumentNodeStoreService {
     }
 
     private void registerNodeStoreIfPossible() throws IOException {
-        if (context == null) {
+        // disallow attempts to restart (OAK-3420)
+        if (deactivationTimestamp != 0) {
+            log.info("DocumentNodeStore was already unregistered ({}ms ago)", System.currentTimeMillis() - deactivationTimestamp);
+        } else if (context == null) {
             log.info("Component still not activated. Ignoring the initialization call");
         } else if (customBlobStore && blobStore == null) {
             log.info("Custom BlobStore use enabled. DocumentNodeStoreService would be initialized when "
@@ -429,8 +428,7 @@ public class DocumentNodeStoreService {
                 log.info("Connected to datasource {}", dataSource);
             }
         } else {
-            MongoClientOptions.Builder builder = MongoConnection.getDefaultBuilder();
-            MongoClientURI mongoURI = new MongoClientURI(uri, builder);
+            MongoClientURI mongoURI = new MongoClientURI(uri);
             
             Map<String, String> mounts = Maps.newLinkedHashMap();
             for ( String rawMount : rawMounts ) {
@@ -459,16 +457,13 @@ public class DocumentNodeStoreService {
                 log.info("Mongo Connection details {}", MongoConnection.toString(mongoURI.getOptions()));
             }
 
-            MongoClient client = new MongoClient(mongoURI);
-            DB mongoDB = client.getDB(db);
-
             mkBuilder.setMaxReplicationLag(maxReplicationLagInSecs, TimeUnit.SECONDS);
             for ( Map.Entry<String, String> entry : mounts.entrySet() ) {
-                mkBuilder.addMongoDbMount(entry.getKey(), mongoDB, entry.getValue());
+                mkBuilder.addMongoDbMount(entry.getKey(), uri, db, entry.getValue());
             }
-            mkBuilder.setMongoDB(mongoDB, blobCacheSize);
+            mkBuilder.setMongoDB(uri, db, blobCacheSize);
 
-            log.info("Connected to database {}", mongoDB);
+            log.info("Connected to database '{}'", db);
         }
 
         //Set wrapping blob store after setting the DB
@@ -579,6 +574,8 @@ public class DocumentNodeStoreService {
     }
 
     private void unregisterNodeStore() {
+        deactivationTimestamp = System.currentTimeMillis();
+
         for (Registration r : registrations) {
             r.unregister();
         }

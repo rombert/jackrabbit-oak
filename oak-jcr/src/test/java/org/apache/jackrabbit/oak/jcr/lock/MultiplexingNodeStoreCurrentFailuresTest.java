@@ -108,7 +108,7 @@ public class MultiplexingNodeStoreCurrentFailuresTest {
             mounts.put("/extra", "extra");
             
             for (Map.Entry<String, String> entry : mounts.entrySet()) {
-                mkBuilder.addMongoDbMount(entry.getKey(), mongoDB, entry.getValue());
+                mkBuilder.addMongoDbMount(entry.getKey(), uri, db, entry.getValue());
             }
         }
 

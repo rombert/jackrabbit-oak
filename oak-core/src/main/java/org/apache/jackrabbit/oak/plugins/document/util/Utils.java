@@ -48,7 +48,6 @@ import org.apache.jackrabbit.oak.plugins.document.NodeDocument;
 import org.apache.jackrabbit.oak.plugins.document.Revision;
 import org.apache.jackrabbit.oak.plugins.document.RevisionContext;
 import org.apache.jackrabbit.oak.plugins.document.StableRevisionComparator;
-import org.bson.types.ObjectId;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -170,16 +169,6 @@ public class Utils {
             size += map.size() * 64;
         }
         return size;
-    }
-
-    /**
-     * Generate a unique cluster id, similar to the machine id field in MongoDB ObjectId objects.
-     *
-     * @return the unique machine id
-     */
-    public static int getUniqueClusterId() {
-        ObjectId objId = new ObjectId();
-        return objId._machine();
     }
 
     public static String escapePropertyName(String propertyName) {
@@ -501,12 +490,30 @@ public class Utils {
      */
     @CheckForNull
     public static Revision max(@Nullable Revision a, @Nullable Revision b) {
+        return max(a, b, StableRevisionComparator.INSTANCE);
+    }
+
+    /**
+     * Returns the revision which is considered more recent or {@code null} if
+     * both revisions are {@code null}. The implementation will return the first
+     * revision if both are considered equal. The comparison is done using the
+     * provided comparator.
+     *
+     * @param a the first revision (or {@code null}).
+     * @param b the second revision (or {@code null}).
+     * @param c the comparator.
+     * @return the revision considered more recent.
+     */
+    @CheckForNull
+    public static Revision max(@Nullable Revision a,
+                               @Nullable Revision b,
+                               @Nonnull Comparator<Revision> c) {
         if (a == null) {
             return b;
         } else if (b == null) {
             return a;
         }
-        return StableRevisionComparator.INSTANCE.compare(a, b) >= 0 ? a : b;
+        return c.compare(a, b) >= 0 ? a : b;
     }
 
     /**
@@ -639,5 +646,27 @@ public class Utils {
                 return getIdFromPath(input);
             }
         });
+    }
+
+    /**
+     * Returns the highest timestamp of all the passed external revisions.
+     * A revision is considered external if the clusterId is different from the
+     * passed {@code localClusterId}.
+     *
+     * @param revisions the revisions to consider.
+     * @param localClusterId the id of the local cluster node.
+     * @return the highest timestamp or {@link Long#MIN_VALUE} if none of the
+     *          revisions is external.
+     */
+    public static long getMaxExternalTimestamp(Iterable<Revision> revisions,
+                                               int localClusterId) {
+        long maxTime = Long.MIN_VALUE;
+        for (Revision r : revisions) {
+            if (r.getClusterId() == localClusterId) {
+                continue;
+            }
+            maxTime = Math.max(maxTime, r.getTimestamp());
+        }
+        return maxTime;
     }
 }

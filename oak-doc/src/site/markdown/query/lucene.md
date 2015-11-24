@@ -870,7 +870,7 @@ mentioned steps
    Codec][OAK-1737]. So oak-lucene jar needs to be included in Luke classpath
    for it to display the index details
 
-        $ java -XX:MaxPermSize=512m luke-with-deps.jar:oak-lucene-1.0.8.jar org.getoptuke.Luke
+        $ java -XX:MaxPermSize=512m -cp luke-with-deps.jar:oak-lucene-1.0.8.jar org.getopt.luke.Luke
         
 From the Luke UI shown you can access various details.
 
@@ -943,6 +943,8 @@ updated every 10 minutes but that can be changed by setting the property
 Sample configuration for suggestions based on terms contained in `jcr:description` 
 property.
 
+Since Oak 1.3.11, the each suggestion would be returned per row.
+
 ```
 /oak:index/lucene-suggest
   - jcr:primaryType = "oak:QueryIndexDefinition"
@@ -973,6 +975,8 @@ properties terms to be used for spellcheck corrections will be taken.
  
 Sample configuration for spellchecking based on terms contained in `jcr:title` 
 property.
+
+Since Oak 1.3.11, the each suggestion would be returned per row.
 
 ```
 /oak:index/lucene-spellcheck

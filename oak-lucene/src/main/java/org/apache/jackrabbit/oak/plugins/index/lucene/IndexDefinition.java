@@ -79,6 +79,7 @@ import static org.apache.jackrabbit.oak.commons.PathUtils.getParentPath;
 import static org.apache.jackrabbit.oak.plugins.index.IndexConstants.DECLARING_NODE_TYPES;
 import static org.apache.jackrabbit.oak.plugins.index.IndexConstants.ENTRY_COUNT_PROPERTY_NAME;
 import static org.apache.jackrabbit.oak.plugins.index.IndexConstants.REINDEX_COUNT;
+import static org.apache.jackrabbit.oak.plugins.index.lucene.LuceneIndexConstants.ACTIVE_DELETE;
 import static org.apache.jackrabbit.oak.plugins.index.lucene.LuceneIndexConstants.BLOB_SIZE;
 import static org.apache.jackrabbit.oak.plugins.index.lucene.LuceneIndexConstants.COMPAT_MODE;
 import static org.apache.jackrabbit.oak.plugins.index.lucene.LuceneIndexConstants.EVALUATE_PATH_RESTRICTION;
@@ -107,6 +108,12 @@ class IndexDefinition implements Aggregate.AggregateMapper{
     private static final String OAK_CHILD_ORDER = ":childOrder";
 
     private static final Logger log = LoggerFactory.getLogger(IndexDefinition.class);
+
+    /**
+     * Default number of seconds after which to delete actively. Default is -1, meaning disabled.
+     * The plan is to use 3600 (1 hour) in the future.
+     */
+    static final int DEFAULT_ACTIVE_DELETE = -1; // 60 * 60;
 
     /**
      * Blob size to use by default. To avoid issues in OAK-2105 the size should not
@@ -151,6 +158,8 @@ class IndexDefinition implements Aggregate.AggregateMapper{
 
     private final String funcName;
 
+    private final int activeDelete;
+    
     private final int blobSize;
 
     private final Codec codec;
@@ -227,6 +236,7 @@ class IndexDefinition implements Aggregate.AggregateMapper{
         this.definition = defn;
         this.indexName = determineIndexName(defn, indexPath);
         this.blobSize = getOptionalValue(defn, BLOB_SIZE, DEFAULT_BLOB_SIZE);
+        this.activeDelete = getOptionalValue(defn, ACTIVE_DELETE, DEFAULT_ACTIVE_DELETE);
         this.testMode = getOptionalValue(defn, LuceneIndexConstants.TEST_MODE, false);
 
         this.aggregates = collectAggregates(defn);
@@ -633,6 +643,7 @@ class IndexDefinition implements Aggregate.AggregateMapper{
         final int propertyTypes;
         final boolean fulltextEnabled;
         final boolean propertyIndexEnabled;
+        final boolean nodeFullTextIndexed;
 
         final Aggregate aggregate;
         final Aggregate propAggregate;
@@ -660,8 +671,9 @@ class IndexDefinition implements Aggregate.AggregateMapper{
             this.nullCheckEnabledProperties = ImmutableList.copyOf(nonExistentProperties);
             this.notNullCheckEnabledProperties = ImmutableList.copyOf(existentProperties);
             this.fulltextEnabled = aggregate.hasNodeAggregates() || hasAnyFullTextEnabledProperty();
+            this.nodeFullTextIndexed = aggregate.hasNodeAggregates() || anyNodeScopeIndexedProperty();
             this.propertyIndexEnabled = hasAnyPropertyIndexConfigured();
-            this.indexesAllNodesOfMatchingType = allMatchingNodeByTypeIndexed();
+            this.indexesAllNodesOfMatchingType = areAlMatchingNodeByTypeIndexed();
             this.nodeNameIndexed = getOptionalValue(config, LuceneIndexConstants.INDEX_NODE_NAME, false);
             validateRuleDefinition();
         }
@@ -688,7 +700,8 @@ class IndexDefinition implements Aggregate.AggregateMapper{
             this.nodeScopeAnalyzedProps = original.nodeScopeAnalyzedProps;
             this.aggregate = combine(propAggregate, nodeTypeName);
             this.fulltextEnabled = aggregate.hasNodeAggregates() || original.fulltextEnabled;
-            this.indexesAllNodesOfMatchingType = allMatchingNodeByTypeIndexed();
+            this.nodeFullTextIndexed = aggregate.hasNodeAggregates() || original.nodeFullTextIndexed;
+            this.indexesAllNodesOfMatchingType = areAlMatchingNodeByTypeIndexed();
             this.nodeNameIndexed = original.nodeNameIndexed;
         }
 
@@ -748,6 +761,12 @@ class IndexDefinition implements Aggregate.AggregateMapper{
          *         <code>false</code> otherwise.
          */
         public boolean appliesTo(Tree state) {
+            for (String mixinName : getMixinTypeNames(state)){
+                if (nodeTypeName.equals(mixinName)){
+                    return true;
+                }
+            }
+
             if (!nodeTypeName.equals(getPrimaryTypeName(state))) {
                 return false;
             }
@@ -771,9 +790,22 @@ class IndexDefinition implements Aggregate.AggregateMapper{
             return nodeNameIndexed;
         }
 
+        /**
+         * Returns true if the rule has any property definition which enables
+         * evaluation of fulltext related clauses
+         */
         public boolean isFulltextEnabled() {
             return fulltextEnabled;
         }
+
+        /**
+         * Returns true if a fulltext field for the node would be created
+         * for any node matching the current rule.
+         */
+        public boolean isNodeFullTextIndexed() {
+            return nodeFullTextIndexed;
+        }
+
         /**
          * @param propertyName name of a property.
          * @return the property configuration or <code>null</code> if this
@@ -904,10 +936,26 @@ class IndexDefinition implements Aggregate.AggregateMapper{
             return false;
         }
 
-        private boolean allMatchingNodeByTypeIndexed(){
-            //Incase of fulltext all nodes matching this rule type would be indexed
-            //and would have entry in the index
-            if (fulltextEnabled){
+        private boolean anyNodeScopeIndexedProperty(){
+            //Check if there is any nodeScope indexed property as
+            //for such case a node would always be indexed
+            for (PropertyDefinition pd : propConfigs.values()){
+                if (pd.nodeScopeIndex){
+                    return true;
+                }
+            }
+
+            for (NamePattern np : namePatterns){
+                if (np.getConfig().nodeScopeIndex){
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private boolean areAlMatchingNodeByTypeIndexed(){
+            if (nodeFullTextIndexed){
                 return true;
             }
 
@@ -1242,7 +1290,7 @@ class IndexDefinition implements Aggregate.AggregateMapper{
     }
 
     private static Iterable<String> getMixinTypeNames(Tree tree) {
-        PropertyState property = tree.getProperty(JcrConstants.JCR_MIMETYPE);
+        PropertyState property = tree.getProperty(JcrConstants.JCR_MIXINTYPES);
         return property != null ? property.getValue(Type.NAMES) : Collections.<String>emptyList();
     }
 
@@ -1284,7 +1332,7 @@ class IndexDefinition implements Aggregate.AggregateMapper{
 
     private static boolean hasFulltextEnabledIndexRule(List<IndexingRule> rules) {
         for (IndexingRule rule : rules){
-            if (rule.fulltextEnabled){
+            if (rule.isFulltextEnabled()){
                 return true;
             }
         }
@@ -1387,6 +1435,10 @@ class IndexDefinition implements Aggregate.AggregateMapper{
             return defn.getProperty(REINDEX_COUNT).getValue(Type.LONG);
         }
         return 0;
+    }
+
+    public boolean getActiveDeleteEnabled() {
+        return activeDelete >= 0;
     }
 
 }

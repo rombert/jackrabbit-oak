@@ -56,7 +56,8 @@ public class UnionQueryImpl implements Query {
     private final QueryEngineSettings settings;
     private boolean isInternal;
     
-    UnionQueryImpl(boolean unionAll, Query left, Query right, QueryEngineSettings settings) {
+    UnionQueryImpl(final boolean unionAll, final Query left, final Query right,
+                   final QueryEngineSettings settings) {
         this.unionAll = unionAll;
         this.left = left;
         this.right = right;
@@ -126,7 +127,9 @@ public class UnionQueryImpl implements Query {
     
     @Override
     public double getEstimatedCost() {
-        return left.getEstimatedCost() + right.getEstimatedCost();
+        // the cost is higher than the cost of both parts, so that
+        // non-union queries are preferred over union ones
+        return 10 + left.getEstimatedCost() + right.getEstimatedCost();
     }
 
     @Override
@@ -236,6 +239,17 @@ public class UnionQueryImpl implements Query {
     }
     
     @Override
+    public String getIndexCostInfo() {
+        StringBuilder buff = new StringBuilder();
+        buff.append("{ ");
+        buff.append(left.getIndexCostInfo());
+        buff.append(", ");
+        buff.append(right.getIndexCostInfo());
+        buff.append(" }");
+        return buff.toString();
+    }
+
+    @Override
     public Tree getTree(String path) {
         return left.getTree(path);
     }
@@ -344,4 +358,36 @@ public class UnionQueryImpl implements Query {
     public boolean isSortedByIndex() {
         return left.isSortedByIndex() && right.isSortedByIndex();
     }
+
+    @Override
+    public Query buildAlternativeQuery() {
+        return this;
+    }
+
+    @Override
+    public Query copyOf() throws IllegalStateException {
+        return null;
+    }
+
+    @Override
+    public boolean isInit() {
+        return left.isInit() || right.isInit();
+    }
+
+    @Override
+    public String getStatement() {
+        return toString();
+    }
+
+    @Override
+    public boolean isInternal() {
+        return left.isInternal() || right.isInternal();
+    }
+
+    @Override
+    public boolean containsUnfilteredFullTextCondition() {
+        return left.containsUnfilteredFullTextCondition() || 
+                right.containsUnfilteredFullTextCondition();
+    }
+
 }
