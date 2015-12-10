@@ -46,6 +46,8 @@ import org.apache.jackrabbit.oak.plugins.index.property.strategy.IndexStoreStrat
 import org.apache.jackrabbit.oak.plugins.index.property.strategy.UniqueEntryStoreStrategy;
 import org.apache.jackrabbit.oak.plugins.nodetype.TypePredicate;
 import org.apache.jackrabbit.oak.spi.commit.Editor;
+import org.apache.jackrabbit.oak.spi.mount.Mount;
+import org.apache.jackrabbit.oak.spi.mount.MountInfoProvider;
 import org.apache.jackrabbit.oak.spi.query.PropertyValues;
 import org.apache.jackrabbit.oak.spi.state.NodeBuilder;
 import org.apache.jackrabbit.oak.spi.state.NodeState;
@@ -115,8 +117,10 @@ class PropertyIndexEditor implements IndexEditor {
 
     private final PathFilter.Result pathFilterResult;
 
+    private final MountInfoProvider mountInfoProvider;
+
     public PropertyIndexEditor(NodeBuilder definition, NodeState root,
-            IndexUpdateCallback updateCallback) {
+                               IndexUpdateCallback updateCallback, MountInfoProvider mountInfoProvider) {
         this.parent = null;
         this.name = null;
         this.path = "/";
@@ -152,6 +156,7 @@ class PropertyIndexEditor implements IndexEditor {
             this.keysToCheckForUniqueness = null;
         }
         this.updateCallback = updateCallback;
+        this.mountInfoProvider = mountInfoProvider;
     }
     
     PropertyIndexEditor(PropertyIndexEditor parent, String name, PathFilter.Result pathFilterResult) {
@@ -166,6 +171,7 @@ class PropertyIndexEditor implements IndexEditor {
         this.updateCallback = parent.updateCallback;
         this.pathFilter = parent.pathFilter;
         this.pathFilterResult = pathFilterResult;
+        this.mountInfoProvider = parent.mountInfoProvider;
     }
     
     /**
@@ -285,7 +291,7 @@ class PropertyIndexEditor implements IndexEditor {
 
             if (!beforeKeys.isEmpty() || !afterKeys.isEmpty()) {
                 updateCallback.indexUpdate();
-                NodeBuilder index = definition.child(INDEX_CONTENT_NODE_NAME);
+                NodeBuilder index = getIndexNode();
                 String properties = definition.getString(PROPERTY_NAMES);
                 boolean uniqueIndex = keysToCheckForUniqueness != null;
                 if (uniqueIndex) {
@@ -441,5 +447,17 @@ class PropertyIndexEditor implements IndexEditor {
 
     private PathFilter.Result getPathFilterResult(String childNodeName) {
         return pathFilter.filter(concat(getPath(), childNodeName));
+    }
+
+    private NodeBuilder getIndexNode() {
+        Mount mount = mountInfoProvider.getMountInfo(getPath());
+        return definition.child(getNodeForMount(mount));
+    }
+
+    static String getNodeForMount(Mount mount){
+        if (mount.isDefault()) {
+            return INDEX_CONTENT_NODE_NAME;
+        }
+        return ":" + mount.getPathFragmentName() + "-index";
     }
 }
