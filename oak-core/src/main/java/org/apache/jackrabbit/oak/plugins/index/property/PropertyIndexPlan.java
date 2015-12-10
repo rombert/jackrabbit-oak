@@ -33,6 +33,7 @@ import org.apache.jackrabbit.oak.commons.PathUtils;
 import org.apache.jackrabbit.oak.plugins.index.PathFilter;
 import org.apache.jackrabbit.oak.plugins.index.property.strategy.ContentMirrorStoreStrategy;
 import org.apache.jackrabbit.oak.plugins.index.property.strategy.IndexStoreStrategy;
+import org.apache.jackrabbit.oak.plugins.index.property.strategy.MultiplexingIndexStoreStrategy;
 import org.apache.jackrabbit.oak.plugins.index.property.strategy.UniqueEntryStoreStrategy;
 import org.apache.jackrabbit.oak.query.QueryEngineSettings;
 import org.apache.jackrabbit.oak.query.ast.ComparisonImpl;
@@ -43,6 +44,7 @@ import org.apache.jackrabbit.oak.query.ast.Operator;
 import org.apache.jackrabbit.oak.query.ast.OrImpl;
 import org.apache.jackrabbit.oak.query.ast.PropertyValueImpl;
 import org.apache.jackrabbit.oak.query.ast.StaticOperandImpl;
+import org.apache.jackrabbit.oak.spi.mount.MountInfoProvider;
 import org.apache.jackrabbit.oak.spi.query.Cursor;
 import org.apache.jackrabbit.oak.spi.query.Cursors;
 import org.apache.jackrabbit.oak.spi.query.Filter;
@@ -65,11 +67,11 @@ public class PropertyIndexPlan {
     static final int MAX_COST = 100;
 
     /** Index storage strategy */
-    private static final IndexStoreStrategy MIRROR =
+    private static final ContentMirrorStoreStrategy MIRROR =
             new ContentMirrorStoreStrategy();
 
     /** Index storage strategy */
-    private static final IndexStoreStrategy UNIQUE =
+    private static final UniqueEntryStoreStrategy UNIQUE =
             new UniqueEntryStoreStrategy();
 
     private final NodeState root;
@@ -96,7 +98,13 @@ public class PropertyIndexPlan {
 
     private final PathFilter pathFilter;
 
-    PropertyIndexPlan(String name, NodeState root, NodeState definition, Filter filter) {
+    PropertyIndexPlan(String name, NodeState root, NodeState definition,
+                      Filter filter){
+        this(name, root, definition, filter, MountInfoProvider.DEFAULT);
+    }
+
+    PropertyIndexPlan(String name, NodeState root, NodeState definition,
+                      Filter filter, MountInfoProvider mountInfoProvider) {
         this.name = name;
         this.root = root;
         this.definition = definition;
@@ -104,9 +112,9 @@ public class PropertyIndexPlan {
         pathFilter = PathFilter.from(definition.builder());
 
         if (definition.getBoolean(UNIQUE_PROPERTY_NAME)) {
-            this.strategy = UNIQUE;
+            this.strategy = new MultiplexingIndexStoreStrategy(UNIQUE, mountInfoProvider);
         } else {
-            this.strategy = MIRROR;
+            this.strategy = new MultiplexingIndexStoreStrategy(MIRROR, mountInfoProvider);
         }
 
         this.filter = filter;

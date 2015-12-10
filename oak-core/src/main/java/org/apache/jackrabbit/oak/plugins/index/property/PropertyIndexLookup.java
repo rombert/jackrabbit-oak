@@ -37,7 +37,7 @@ import org.apache.jackrabbit.oak.commons.PathUtils;
 import org.apache.jackrabbit.oak.plugins.index.IndexConstants;
 import org.apache.jackrabbit.oak.plugins.index.property.strategy.ContentMirrorStoreStrategy;
 import org.apache.jackrabbit.oak.plugins.index.property.strategy.IndexStoreStrategy;
-import org.apache.jackrabbit.oak.plugins.index.property.strategy.MultiplexingContentMirrorStoreStrategy;
+import org.apache.jackrabbit.oak.plugins.index.property.strategy.MultiplexingIndexStoreStrategy;
 import org.apache.jackrabbit.oak.plugins.index.property.strategy.UniqueEntryStoreStrategy;
 import org.apache.jackrabbit.oak.spi.mount.MountInfoProvider;
 import org.apache.jackrabbit.oak.spi.query.Filter;
@@ -77,7 +77,7 @@ public class PropertyIndexLookup {
             new ContentMirrorStoreStrategy();
 
     /** Index storage strategy */
-    private static final IndexStoreStrategy UNIQUE =
+    private static final UniqueEntryStoreStrategy UNIQUE =
             new UniqueEntryStoreStrategy();
 
     private final NodeState root;
@@ -128,10 +128,9 @@ public class PropertyIndexLookup {
 
     IndexStoreStrategy getStrategy(NodeState indexMeta) {
         if (indexMeta.getBoolean(IndexConstants.UNIQUE_PROPERTY_NAME)) {
-            //TODO Handle mounts for this part
-            return UNIQUE;
+            return new MultiplexingIndexStoreStrategy(UNIQUE, mountInfoProvider);
         }
-        return new MultiplexingContentMirrorStoreStrategy(MIRROR, mountInfoProvider);
+        return new MultiplexingIndexStoreStrategy(MIRROR, mountInfoProvider);
     }
 
     public double getCost(Filter filter, String propertyName, PropertyValue value) {

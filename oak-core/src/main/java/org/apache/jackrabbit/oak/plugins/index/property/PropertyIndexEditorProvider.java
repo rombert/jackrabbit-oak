@@ -20,6 +20,7 @@ import javax.annotation.Nonnull;
 
 import org.apache.felix.scr.annotations.Component;
 import org.apache.felix.scr.annotations.Property;
+import org.apache.felix.scr.annotations.Reference;
 import org.apache.felix.scr.annotations.Service;
 import org.apache.jackrabbit.oak.plugins.index.IndexConstants;
 import org.apache.jackrabbit.oak.plugins.index.IndexEditorProvider;
@@ -43,6 +44,7 @@ public class PropertyIndexEditorProvider implements IndexEditorProvider {
 
     public static final String TYPE = "property";
 
+    @Reference
     private MountInfoProvider mountInfoProvider = MountInfoProvider.DEFAULT;
 
     @Override
