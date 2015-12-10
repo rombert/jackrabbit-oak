@@ -71,7 +71,7 @@ import com.google.common.collect.Sets;
  * </pre>
  *
  */
-public class ContentMirrorStoreStrategy implements IndexStoreStrategy {
+public class ContentMirrorStoreStrategy implements IndexStoreStrategy, ConfigurableStorageStrategy {
 
     static final Logger LOG = LoggerFactory.getLogger(ContentMirrorStoreStrategy.class);
     
@@ -130,6 +130,7 @@ public class ContentMirrorStoreStrategy implements IndexStoreStrategy {
         builder.setProperty("match", true);
     }
 
+    @Override
     public Iterable<String> query(final Filter filter, final String indexName,
             final NodeState indexMeta, final String indexStorageNodeName,
             final Iterable<String> values) {
@@ -183,6 +184,7 @@ public class ContentMirrorStoreStrategy implements IndexStoreStrategy {
         return count(null, root, indexMeta, indexStorageNodeName, values, max);
     }
 
+    @Override
     public long count(Filter filter, NodeState root, NodeState indexMeta, final String indexStorageNodeName,
             Set<String> values, int max) {
         NodeState index = indexMeta.getChildNode(indexStorageNodeName);

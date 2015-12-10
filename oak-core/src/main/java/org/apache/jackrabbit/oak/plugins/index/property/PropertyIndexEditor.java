@@ -43,6 +43,7 @@ import org.apache.jackrabbit.oak.plugins.index.IndexUpdateCallback;
 import org.apache.jackrabbit.oak.plugins.index.PathFilter;
 import org.apache.jackrabbit.oak.plugins.index.property.strategy.ContentMirrorStoreStrategy;
 import org.apache.jackrabbit.oak.plugins.index.property.strategy.IndexStoreStrategy;
+import org.apache.jackrabbit.oak.plugins.index.property.strategy.MultiplexingIndexStoreStrategy;
 import org.apache.jackrabbit.oak.plugins.index.property.strategy.UniqueEntryStoreStrategy;
 import org.apache.jackrabbit.oak.plugins.nodetype.TypePredicate;
 import org.apache.jackrabbit.oak.spi.commit.Editor;
@@ -63,11 +64,11 @@ import com.google.common.base.Predicate;
 class PropertyIndexEditor implements IndexEditor {
 
     /** Index storage strategy */
-    private static final IndexStoreStrategy MIRROR =
+    private static final ContentMirrorStoreStrategy MIRROR =
             new ContentMirrorStoreStrategy();
 
     /** Index storage strategy */
-    private static final IndexStoreStrategy UNIQUE =
+    private static final UniqueEntryStoreStrategy UNIQUE =
             new UniqueEntryStoreStrategy();
 
     /** Parent editor, or {@code null} if this is the root editor. */
@@ -228,7 +229,9 @@ class PropertyIndexEditor implements IndexEditor {
     }
 
     IndexStoreStrategy getStrategy(boolean unique) {
-        return unique ? UNIQUE : MIRROR;
+        //[multiplex] TODO Avoid creating new instance and maintain them in root state OAK-3757
+        return unique ? new MultiplexingIndexStoreStrategy(UNIQUE, mountInfoProvider) :
+                new MultiplexingIndexStoreStrategy(MIRROR, mountInfoProvider);
     }
 
     @Override
@@ -296,7 +299,7 @@ class PropertyIndexEditor implements IndexEditor {
                 boolean uniqueIndex = keysToCheckForUniqueness != null;
                 if (uniqueIndex) {
                     keysToCheckForUniqueness.addAll(
-                            getExistingKeys(afterKeys, index));
+                            getExistingKeys(afterKeys));
                 }
                 getStrategy(uniqueIndex).update(
                         index, getPath(), properties, definition, beforeKeys, afterKeys);
@@ -336,11 +339,10 @@ class PropertyIndexEditor implements IndexEditor {
      * @param index the index
      * @return the set of keys that already exist in this unique index
      */
-    private Set<String> getExistingKeys(Set<String> keys, NodeBuilder index) {
+    private Set<String> getExistingKeys(Set<String> keys) {
         Set<String> existing = null;
-        IndexStoreStrategy s = getStrategy(true);
         for (String key : keys) {
-            if (s.exists(index, key)) {
+            if (keyExists(key)) {
                 if (existing == null) {
                     existing = newHashSet();
                 }
@@ -352,7 +354,6 @@ class PropertyIndexEditor implements IndexEditor {
         }
         return existing;
     }
-        
     /**
      * From a set of keys, get the first that has multiple entries, if any.
      * 
@@ -447,6 +448,13 @@ class PropertyIndexEditor implements IndexEditor {
 
     private PathFilter.Result getPathFilterResult(String childNodeName) {
         return pathFilter.filter(concat(getPath(), childNodeName));
+    }
+
+    private boolean keyExists(String key) {
+        //[multiplex] TODO Change the getStrategy to return MultiplexingIndexStoreStrategy but that would
+        //require change in OrderedIndex. So for now keep it this way
+        MultiplexingIndexStoreStrategy s = (MultiplexingIndexStoreStrategy) getStrategy(true);
+        return s.existsInAnyStore(definition, key);
     }
 
     private NodeBuilder getIndexNode() {

@@ -797,6 +797,32 @@ public class PropertyIndexTest {
 
     }
 
+    @Test(expected = CommitFailedException.class)
+    public void mountAndUniqueIndexes() throws Exception{
+        NodeState root = INITIAL_CONTENT;
+
+        // Add index definition
+        NodeBuilder builder = root.builder();
+        NodeBuilder index = createIndexDefinition(builder.child(INDEX_DEFINITIONS_NAME), "foo",
+                true, true, ImmutableSet.of("foo"), null);
+        index.setProperty("entryCount", -1);
+        NodeState before = builder.getNodeState();
+
+        MountInfoProvider mip = SimpleMountInfoProvider.newBuilder()
+                .mount("foo", "/a")
+                .build();
+
+        builder.child("a").setProperty("foo", "abc");
+        builder.child("b").setProperty("foo", Arrays.asList("abc", "def"),
+                Type.STRINGS);
+        NodeState after = builder.getNodeState();
+
+        EditorHook hook = new EditorHook(
+                new IndexUpdateProvider(new PropertyIndexEditorProvider().with(mip)));
+        // should throw
+        hook.processCommit(before, after, CommitInfo.EMPTY);
+    }
+
     private static String pathInIndex(Mount mount, String indexPath, String indexedPath, String indexedValue){
         return indexPath + "/" + PropertyIndexEditor.getNodeForMount(mount) + "/" + indexedValue + indexedPath;
     }

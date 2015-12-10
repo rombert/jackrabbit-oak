@@ -31,12 +31,12 @@ import org.apache.jackrabbit.oak.spi.state.NodeBuilder;
 import org.apache.jackrabbit.oak.spi.state.NodeState;
 import org.apache.jackrabbit.oak.spi.state.NodeStateUtils;
 
-public class MultiplexingContentMirrorStoreStrategy implements IndexStoreStrategy {
-    private final ContentMirrorStoreStrategy strategy;
+public class MultiplexingIndexStoreStrategy implements IndexStoreStrategy {
+    private final ConfigurableStorageStrategy strategy;
     private final MountInfoProvider mountInfoProvider;
 
-    public MultiplexingContentMirrorStoreStrategy(ContentMirrorStoreStrategy strategy,
-                                                  MountInfoProvider mountInfoProvider) {
+    public MultiplexingIndexStoreStrategy(ConfigurableStorageStrategy strategy,
+                                          MountInfoProvider mountInfoProvider) {
         this.strategy = strategy;
         this.mountInfoProvider = mountInfoProvider;
     }
@@ -52,17 +52,34 @@ public class MultiplexingContentMirrorStoreStrategy implements IndexStoreStrateg
         return strategy.exists(index, key);
     }
 
+    public boolean existsInAnyStore(NodeBuilder indexMeta, String key) {
+        for(String name : indexMeta.getChildNodeNames()){
+            if (isIndexStorageNode(name)){
+                if (strategy.exists(indexMeta.getChildNode(name), key)){
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
     @Override
     public Iterable<String> query(Filter filter, String indexName, NodeState indexMeta,
                                   Iterable<String> values) {
-        if (mountInfoProvider.getNonDefaultMounts().isEmpty()){
+        //TODO We try to avoid the cost unnecessary checking for child node
+        //Another option would be to have some config on index indicating that it is enabled
+        //for multiplexing
+        if (noMounts()){
             return strategy.query(filter, indexName, indexMeta, values);
         }
 
         List<Iterable<String>> iterables = Lists.newArrayList();
+        //TODO Currently we just look for child nodes of type index node. Other way would be to
+        //check of existing mount names and then use that to check if child node with given mount
+        //name exist
         for(ChildNodeEntry cne : indexMeta.getChildNodeEntries()){
             String name = cne.getName();
-            if (NodeStateUtils.isHidden(name) && name.endsWith("index")){
+            if (isIndexStorageNode(name)){
                 iterables.add(strategy.query(filter, indexName, indexMeta, name, values));
             }
         }
@@ -71,11 +88,31 @@ public class MultiplexingContentMirrorStoreStrategy implements IndexStoreStrateg
 
     @Override
     public long count(NodeState root, NodeState indexMeta, Set<String> values, int max) {
-        return strategy.count(root, indexMeta, values, max);
+        return count(null, root, indexMeta, values, max);
     }
 
     @Override
     public long count(Filter filter, NodeState root, NodeState indexMeta, Set<String> values, int max) {
-        return strategy.count(filter, root, indexMeta, values, max);
+        if (noMounts()) {
+            return strategy.count(filter, root, indexMeta, values, max);
+        }
+
+        long count = 0;
+        for (ChildNodeEntry cne : indexMeta.getChildNodeEntries()) {
+            String name = cne.getName();
+            if (isIndexStorageNode(name)) {
+                count += strategy.count(filter, root, indexMeta, name, values, max);
+            }
+        }
+        return count;
     }
+
+    private boolean noMounts() {
+        return mountInfoProvider.getNonDefaultMounts().isEmpty();
+    }
+
+    private boolean isIndexStorageNode(String name) {
+        return NodeStateUtils.isHidden(name) && name.endsWith("index");
+    }
+
 }

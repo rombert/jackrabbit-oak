@@ -43,7 +43,7 @@ import org.slf4j.LoggerFactory;
  * For example for a node that is under {@code /test/node}, the index
  * structure will be {@code /oak:index/index/@key}:
  */
-public class UniqueEntryStoreStrategy implements IndexStoreStrategy {
+public class UniqueEntryStoreStrategy implements IndexStoreStrategy, ConfigurableStorageStrategy {
 
     static final Logger LOG = LoggerFactory.getLogger(UniqueEntryStoreStrategy.class);
 
@@ -108,7 +108,14 @@ public class UniqueEntryStoreStrategy implements IndexStoreStrategy {
     @Override
     public Iterable<String> query(final Filter filter, final String indexName, 
             final NodeState indexMeta, final Iterable<String> values) {
-        final NodeState index = indexMeta.getChildNode(INDEX_CONTENT_NODE_NAME);
+        return query(filter, indexName, indexMeta, INDEX_CONTENT_NODE_NAME, values);
+    }
+
+    @Override
+    public Iterable<String> query(final Filter filter, final String indexName,
+        final NodeState indexMeta, final String indexStorageNodeName,
+        final Iterable<String> values){
+        final NodeState index = indexMeta.getChildNode(indexStorageNodeName);
         return new Iterable<String>() {
             @Override
             public Iterator<String> iterator() {
@@ -157,7 +164,13 @@ public class UniqueEntryStoreStrategy implements IndexStoreStrategy {
 
     @Override
     public long count(NodeState root, NodeState indexMeta, Set<String> values, int max) {
-        NodeState index = indexMeta.getChildNode(INDEX_CONTENT_NODE_NAME);
+        return count(null, root, indexMeta, INDEX_CONTENT_NODE_NAME, values, max);
+    }
+
+    @Override
+    public long count(Filter filter, NodeState root, NodeState indexMeta, final String indexStorageNodeName,
+        Set<String> values, int max){
+        NodeState index = indexMeta.getChildNode(indexStorageNodeName);
         long count = 0;
         if (values == null) {
             PropertyState ec = indexMeta.getProperty(ENTRY_COUNT_PROPERTY_NAME);
@@ -191,7 +204,7 @@ public class UniqueEntryStoreStrategy implements IndexStoreStrategy {
 
     @Override
     public long count(final Filter filter, NodeState root, NodeState indexMeta, Set<String> values, int max) {
-        return count(root, indexMeta, values, max);
+        return count(filter, root, indexMeta, INDEX_CONTENT_NODE_NAME, values, max);
     }
     
 }
