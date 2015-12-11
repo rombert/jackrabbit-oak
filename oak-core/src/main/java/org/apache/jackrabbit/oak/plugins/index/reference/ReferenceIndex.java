@@ -33,7 +33,10 @@ import static org.apache.jackrabbit.oak.spi.query.Cursors.newPathCursor;
 import java.util.ArrayList;
 
 import org.apache.jackrabbit.oak.plugins.index.property.strategy.ContentMirrorStoreStrategy;
+import org.apache.jackrabbit.oak.plugins.index.property.strategy.IndexStoreStrategy;
+import org.apache.jackrabbit.oak.plugins.index.property.strategy.MultiplexingIndexStoreStrategy;
 import org.apache.jackrabbit.oak.query.index.FilterImpl;
+import org.apache.jackrabbit.oak.spi.mount.MountInfoProvider;
 import org.apache.jackrabbit.oak.spi.query.Cursor;
 import org.apache.jackrabbit.oak.spi.query.Filter;
 import org.apache.jackrabbit.oak.spi.query.Filter.PropertyRestriction;
@@ -54,6 +57,16 @@ class ReferenceIndex implements QueryIndex {
     private static final ContentMirrorStoreStrategy STORE = new ContentMirrorStoreStrategy();
 
     private static final double COST = 1;
+
+    private final MountInfoProvider mountInfoProvider;
+
+    ReferenceIndex(){
+        this(MountInfoProvider.DEFAULT);
+    }
+
+    ReferenceIndex(MountInfoProvider mountInfoProvider) {
+        this.mountInfoProvider = mountInfoProvider;
+    }
 
     @Override
     public double getMinimumCost() {
@@ -110,15 +123,15 @@ class ReferenceIndex implements QueryIndex {
         return newPathCursor(new ArrayList<String>(), filter.getQueryEngineSettings());
     }
 
-    private static Cursor lookup(NodeState root, String uuid,
+    private Cursor lookup(NodeState root, String uuid,
             final String name, String index, Filter filter) {
         NodeState indexRoot = root.getChildNode(INDEX_DEFINITIONS_NAME)
                 .getChildNode(NAME);
         if (!indexRoot.exists()) {
             return newPathCursor(new ArrayList<String>(), filter.getQueryEngineSettings());
         }
-        Iterable<String> paths = STORE.query(new FilterImpl(), index + "("
-                + uuid + ")", indexRoot, index, ImmutableSet.of(uuid));
+        Iterable<String> paths = getStore(index).query(new FilterImpl(), index + "("
+                + uuid + ")", indexRoot, ImmutableSet.of(uuid));
 
         if (!"*".equals(name)) {
             paths = filter(paths, new Predicate<String>() {
@@ -135,6 +148,10 @@ class ReferenceIndex implements QueryIndex {
             }
         });
         return newPathCursor(paths, filter.getQueryEngineSettings());
+    }
+
+    private IndexStoreStrategy getStore(String index) {
+        return new MultiplexingIndexStoreStrategy(STORE, mountInfoProvider, index);
     }
 
     @Override

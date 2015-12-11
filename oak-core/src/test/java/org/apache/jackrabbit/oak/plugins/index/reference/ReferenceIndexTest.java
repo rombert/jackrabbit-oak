@@ -24,22 +24,23 @@ import java.util.List;
 
 import javax.jcr.PropertyType;
 
-import com.google.common.collect.ImmutableList;
 import org.apache.jackrabbit.oak.api.Type;
 import org.apache.jackrabbit.oak.plugins.index.IndexUpdateProvider;
+import org.apache.jackrabbit.oak.plugins.multiplex.SimpleMountInfoProvider;
 import org.apache.jackrabbit.oak.query.QueryEngineSettings;
 import org.apache.jackrabbit.oak.query.ast.Operator;
 import org.apache.jackrabbit.oak.query.ast.SelectorImpl;
 import org.apache.jackrabbit.oak.query.index.FilterImpl;
 import org.apache.jackrabbit.oak.spi.commit.CommitInfo;
 import org.apache.jackrabbit.oak.spi.commit.EditorHook;
+import org.apache.jackrabbit.oak.spi.mount.MountInfoProvider;
 import org.apache.jackrabbit.oak.spi.query.Cursor;
 import org.apache.jackrabbit.oak.spi.query.Filter;
 import org.apache.jackrabbit.oak.spi.query.PropertyValues;
 import org.apache.jackrabbit.oak.spi.query.QueryIndex;
-import org.apache.jackrabbit.oak.spi.query.QueryIndexProvider;
 import org.apache.jackrabbit.oak.spi.state.NodeBuilder;
 import org.apache.jackrabbit.oak.spi.state.NodeState;
+import org.apache.jackrabbit.oak.spi.state.NodeStateUtils;
 import org.junit.Test;
 
 import static com.google.common.collect.ImmutableList.of;
@@ -51,6 +52,7 @@ import static org.apache.jackrabbit.JcrConstants.NT_BASE;
 import static org.apache.jackrabbit.oak.plugins.memory.PropertyStates.createProperty;
 import static org.apache.jackrabbit.oak.plugins.nodetype.NodeTypeConstants.JCR_NODE_TYPES;
 import static org.apache.jackrabbit.oak.plugins.nodetype.write.InitialContent.INITIAL_CONTENT;
+import static org.apache.jackrabbit.oak.spi.query.PropertyValues.newReference;
 
 public class ReferenceIndexTest {
 
@@ -71,14 +73,55 @@ public class ReferenceIndexTest {
 
         NodeState indexed = hook.processCommit(before, after, CommitInfo.EMPTY);
         FilterImpl f = createFilter(indexed, NT_BASE);
-        f.restrictProperty("*", Operator.EQUAL, PropertyValues.newReference("u1"), PropertyType.REFERENCE);
+        f.restrictProperty("*", Operator.EQUAL, newReference("u1"), PropertyType.REFERENCE);
 
         assertFilter(f, new ReferenceIndex(), indexed, of("/a", "/b"));
 
         FilterImpl f2 = createFilter(indexed, NT_BASE);
-        f2.restrictProperty("*", Operator.EQUAL, PropertyValues.newReference("u2"), PropertyType.WEAKREFERENCE);
+        f2.restrictProperty("*", Operator.EQUAL, newReference("u2"), PropertyType.WEAKREFERENCE);
         assertFilter(f2, new ReferenceIndex(), indexed, of("/c"));
     }
+
+    @Test
+    public void referenceHandlingWithMounts() throws Exception{
+        NodeState root = INITIAL_CONTENT;
+
+        NodeBuilder builder = root.builder();
+        NodeState before = builder.getNodeState();
+
+        builder.child("a").child("x").setProperty(createProperty("foo", "u1", Type.REFERENCE));
+        builder.child("b").setProperty(createProperty("foo", "u1", Type.REFERENCE));
+        builder.child("c").setProperty(createProperty("foo", "u1", Type.WEAKREFERENCE));
+
+        builder.child("d").setProperty(createProperty("foo", "u2", Type.WEAKREFERENCE));
+        builder.child("a").child("y").setProperty(createProperty("foo", "u1", Type.WEAKREFERENCE));
+
+        NodeState after = builder.getNodeState();
+
+        MountInfoProvider mip = SimpleMountInfoProvider.newBuilder()
+                .mount("foo", "/a")
+                .build();
+
+        EditorHook hook = new EditorHook(
+                new IndexUpdateProvider(new ReferenceEditorProvider().with(mip)));
+
+        ReferenceIndex referenceIndex = new ReferenceIndex(mip);
+
+        NodeState indexed = hook.processCommit(before, after, CommitInfo.EMPTY);
+        FilterImpl f = createFilter(indexed, NT_BASE);
+        f.restrictProperty("*", Operator.EQUAL, newReference("u1"), PropertyType.REFERENCE);
+
+        System.out.println(NodeStateUtils.toString(NodeStateUtils.getNode(indexed, "/oak:index/reference")));
+        assertFilter(f, referenceIndex, indexed, of("/a/x", "/b"));
+
+        FilterImpl f2 = createFilter(indexed, NT_BASE);
+        f2.restrictProperty("*", Operator.EQUAL, newReference("u1"), PropertyType.WEAKREFERENCE);
+        assertFilter(f2, referenceIndex, indexed, of("/c", "/a/y"));
+    }
+
+
+    //TODO Integrity check - Add node with id=1 and add a reference to that and then remove the node
+    //Removal
 
     @SuppressWarnings("Duplicates")
     private static FilterImpl createFilter(NodeState root, String nodeTypeName) {

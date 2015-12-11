@@ -83,7 +83,7 @@ public class MultiplexingIndexStoreStrategy implements IndexStoreStrategy {
         //Another option would be to have some config on index indicating that it is enabled
         //for multiplexing
         if (noMounts()){
-            return strategy.query(filter, indexName, indexMeta, values);
+            return strategy.query(filter, indexName, indexMeta, defaultNodeName, values);
         }
 
         List<Iterable<String>> iterables = Lists.newArrayList();

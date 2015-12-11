@@ -41,10 +41,13 @@ import com.google.common.collect.Sets;
 
 import org.apache.jackrabbit.oak.api.CommitFailedException;
 import org.apache.jackrabbit.oak.api.PropertyState;
+import org.apache.jackrabbit.oak.commons.PathUtils;
 import org.apache.jackrabbit.oak.plugins.index.IndexEditor;
 import org.apache.jackrabbit.oak.plugins.index.property.strategy.ContentMirrorStoreStrategy;
+import org.apache.jackrabbit.oak.plugins.index.property.strategy.MultiplexingIndexStoreStrategy;
 import org.apache.jackrabbit.oak.spi.commit.DefaultEditor;
 import org.apache.jackrabbit.oak.spi.commit.Editor;
+import org.apache.jackrabbit.oak.spi.mount.MountInfoProvider;
 import org.apache.jackrabbit.oak.spi.state.NodeBuilder;
 import org.apache.jackrabbit.oak.spi.state.NodeState;
 
@@ -53,8 +56,6 @@ import org.apache.jackrabbit.oak.spi.state.NodeState;
  * 
  */
 class ReferenceEditor extends DefaultEditor implements IndexEditor {
-
-    private static final ContentMirrorStoreStrategy STORE = new ContentMirrorStoreStrategy();
 
     /** Parent editor, or {@code null} if this is the root editor. */
     private final ReferenceEditor parent;
@@ -101,13 +102,15 @@ class ReferenceEditor extends DefaultEditor implements IndexEditor {
      */
     private final Set<String> newIds;
 
+    private final MountInfoProvider mountInfoProvider;
+
     /**
      * flag marking a reindex, case in which we don't need to keep track of the
      * newIds set
      */
     private boolean isReindex;
 
-    public ReferenceEditor(NodeBuilder definition, NodeState root) {
+    public ReferenceEditor(NodeBuilder definition, NodeState root,MountInfoProvider mountInfoProvider) {
         this.parent = null;
         this.name = null;
         this.path = "/";
@@ -119,6 +122,7 @@ class ReferenceEditor extends DefaultEditor implements IndexEditor {
         this.rmWeakRefs = newHashMap();
         this.rmIds = newHashSet();
         this.newIds = newHashSet();
+        this.mountInfoProvider = mountInfoProvider;
     }
 
     private ReferenceEditor(ReferenceEditor parent, String name) {
@@ -134,6 +138,7 @@ class ReferenceEditor extends DefaultEditor implements IndexEditor {
         this.rmIds = parent.rmIds;
         this.newIds = parent.newIds;
         this.isReindex = parent.isReindex;
+        this.mountInfoProvider = parent.mountInfoProvider;
     }
 
     /**
@@ -158,6 +163,8 @@ class ReferenceEditor extends DefaultEditor implements IndexEditor {
     public void leave(NodeState before, NodeState after)
             throws CommitFailedException {
         if (parent == null) {
+            MultiplexingIndexStoreStrategy refStore = getStoreStrategy(mountInfoProvider, REF_NAME);
+            MultiplexingIndexStoreStrategy weakRefStore = getStoreStrategy(mountInfoProvider, WEAK_REF_NAME);
             // update references
             for (Entry<String, Set<String>> ref : rmRefs.entrySet()) {
                 String uuid = ref.getKey();
@@ -166,7 +173,7 @@ class ReferenceEditor extends DefaultEditor implements IndexEditor {
                 if (newRefs.containsKey(uuid)) {
                     add = newRefs.remove(uuid);
                 }
-                update(definition, REF_NAME, uuid, add, rm);
+                update(refStore, definition, REF_NAME, uuid, add, rm);
             }
             for (Entry<String, Set<String>> ref : newRefs.entrySet()) {
                 String uuid = ref.getKey();
@@ -175,10 +182,10 @@ class ReferenceEditor extends DefaultEditor implements IndexEditor {
                 }
                 Set<String> add = ref.getValue();
                 Set<String> rm = emptySet();
-                update(definition, REF_NAME, uuid, add, rm);
+                update(refStore, definition, REF_NAME, uuid, add, rm);
             }
 
-            checkReferentialIntegrity(root, definition.getNodeState(),
+            checkReferentialIntegrity(refStore, root, definition.getNodeState(),
                     Sets.difference(rmIds, newIds));
 
             // update weak references
@@ -189,13 +196,13 @@ class ReferenceEditor extends DefaultEditor implements IndexEditor {
                 if (newWeakRefs.containsKey(uuid)) {
                     add = newWeakRefs.remove(uuid);
                 }
-                update(definition, WEAK_REF_NAME, uuid, add, rm);
+                update(weakRefStore, definition, WEAK_REF_NAME, uuid, add, rm);
             }
             for (Entry<String, Set<String>> ref : newWeakRefs.entrySet()) {
                 String uuid = ref.getKey();
                 Set<String> add = ref.getValue();
                 Set<String> rm = emptySet();
-                update(definition, WEAK_REF_NAME, uuid, add, rm);
+                update(weakRefStore, definition, WEAK_REF_NAME, uuid, add, rm);
             }
         }
     }
@@ -272,6 +279,13 @@ class ReferenceEditor extends DefaultEditor implements IndexEditor {
         return new ReferenceEditor(this, name);
     }
 
+    private NodeBuilder getIndexNode(MultiplexingIndexStoreStrategy store, String path) {
+        if (!PathUtils.isAbsolute(path)){
+            path = "/" + path;
+        }
+        return definition.child(store.getIndexNodeName(path));
+    }
+
     // ---------- Utils -----------------------------------------
 
     private static boolean isVersionStorePath(String oakPath) {
@@ -292,36 +306,43 @@ class ReferenceEditor extends DefaultEditor implements IndexEditor {
         }
     }
 
-    private static void update(NodeBuilder child, String name, String key,
-            Set<String> add, Set<String> rm) {
-        NodeBuilder index = child.child(name);
+    private void update(MultiplexingIndexStoreStrategy store, NodeBuilder child, String name,
+                        String key,  Set<String> add, Set<String> rm) {
+
         Set<String> empty = of();
         for (String p : rm) {
-            STORE.update(index, p, name, child, of(key), empty);
+            NodeBuilder index = getIndexNode(store, p);
+            store.update(index, p, name, child, of(key), empty);
         }
         for (String p : add) {
             // TODO do we still need to encode the values?
-            STORE.update(index, p, name, child, empty, of(key));
+            NodeBuilder index = getIndexNode(store, p);
+            store.update(index, p, name, child, empty, of(key));
         }
     }
 
-    private static boolean hasReferences(NodeState root,
-                                         NodeState definition,
-                                         String name,
-                                         String key) {
+    private boolean hasReferences(MultiplexingIndexStoreStrategy refStore, NodeState root,
+                                  NodeState definition,
+                                  String name,
+                                  String key) {
         return definition.hasChildNode(name)
-                && STORE.count(root, definition, name, of(key), 1) > 0;
+                && refStore.count(null, root, definition, of(key), 1) > 0;
     }
 
-    private static void checkReferentialIntegrity(NodeState root,
-                                                  NodeState definition,
-                                                  Set<String> idsOfRemovedNodes)
+    private void checkReferentialIntegrity(MultiplexingIndexStoreStrategy refStore, NodeState root,
+                                           NodeState definition,
+                                           Set<String> idsOfRemovedNodes)
             throws CommitFailedException {
         for (String id : idsOfRemovedNodes) {
-            if (hasReferences(root, definition, REF_NAME, id)) {
+            if (hasReferences(refStore, root, definition, REF_NAME, id)) {
                 throw new CommitFailedException(INTEGRITY, 1,
                         "Unable to delete referenced node");
             }
         }
+    }
+
+    private static MultiplexingIndexStoreStrategy getStoreStrategy(MountInfoProvider mountInfoProvider,
+                                                                   String  refName) {
+        return new MultiplexingIndexStoreStrategy(new ContentMirrorStoreStrategy(), mountInfoProvider, refName);
     }
 }
