@@ -764,6 +764,9 @@ public class PropertyIndexTest {
                 .mount("foo", "/a", "/m/n")
                 .build();
 
+        MultiplexingIndexStoreStrategy store =
+                new MultiplexingIndexStoreStrategy(new ContentMirrorStoreStrategy(), mip);
+
         Mount fooMount = mip.getMount("foo");
 
         EditorHook hook = new EditorHook(
@@ -781,18 +784,18 @@ public class PropertyIndexTest {
         assertTrue(getNode(indexed, "/oak:index/foo/:index").exists());
 
         //Separate node for mount
-        assertTrue(getNode(indexed, "/oak:index/foo/"+ getNodeForMount(fooMount)).exists());
+        assertTrue(getNode(indexed, "/oak:index/foo/"+ store.getNodeForMount(fooMount)).exists());
 
         //Index entries for paths in foo mount should go to :oak:foo-index
-        assertTrue(getNode(indexed, pathInIndex(fooMount, "/oak:index/foo", "/a", "abc")).exists());
-        assertTrue(getNode(indexed, pathInIndex(fooMount, "/oak:index/foo", "/a/x", "abc")).exists());
-        assertTrue(getNode(indexed, pathInIndex(fooMount, "/oak:index/foo", "/m/n", "abc")).exists());
-        assertTrue(getNode(indexed, pathInIndex(fooMount, "/oak:index/foo", "/m/n/o", "abc")).exists());
+        assertTrue(getNode(indexed, pathInIndex(store, fooMount, "/oak:index/foo", "/a", "abc")).exists());
+        assertTrue(getNode(indexed, pathInIndex(store, fooMount, "/oak:index/foo", "/a/x", "abc")).exists());
+        assertTrue(getNode(indexed, pathInIndex(store, fooMount, "/oak:index/foo", "/m/n", "abc")).exists());
+        assertTrue(getNode(indexed, pathInIndex(store, fooMount, "/oak:index/foo", "/m/n/o", "abc")).exists());
 
         //All other index entries should go to :index
-        assertTrue(getNode(indexed, pathInIndex(Mount.DEFAULT, "/oak:index/foo", "/b", "abc")).exists());
-        assertTrue(getNode(indexed, pathInIndex(Mount.DEFAULT, "/oak:index/foo", "/b/x", "abc")).exists());
-        assertTrue(getNode(indexed, pathInIndex(Mount.DEFAULT, "/oak:index/foo", "/m", "abc")).exists());
+        assertTrue(getNode(indexed, pathInIndex(store, Mount.DEFAULT, "/oak:index/foo", "/b", "abc")).exists());
+        assertTrue(getNode(indexed, pathInIndex(store, Mount.DEFAULT, "/oak:index/foo", "/b/x", "abc")).exists());
+        assertTrue(getNode(indexed, pathInIndex(store, Mount.DEFAULT, "/oak:index/foo", "/m", "abc")).exists());
 
         //System.out.println(NodeStateUtils.toString(getNode(indexed, "/oak:index/foo")));
 
@@ -824,12 +827,9 @@ public class PropertyIndexTest {
         hook.processCommit(before, after, CommitInfo.EMPTY);
     }
 
-    private static String getNodeForMount(Mount mount){
-        return MultiplexingIndexStoreStrategy.getNodeForMount(mount, PropertyIndexEditor.INDEX_NODE_SUFFIX);
-    }
-
-    private static String pathInIndex(Mount mount, String indexPath, String indexedPath, String indexedValue){
-        return indexPath + "/" + getNodeForMount(mount) + "/" + indexedValue + indexedPath;
+    private static String pathInIndex(MultiplexingIndexStoreStrategy store, Mount mount,
+                                      String indexPath, String indexedPath, String indexedValue){
+        return indexPath + "/" + store.getNodeForMount(mount) + "/" + indexedValue + indexedPath;
     }
 
     private int getResultSize(NodeState indexed, String name, String value){

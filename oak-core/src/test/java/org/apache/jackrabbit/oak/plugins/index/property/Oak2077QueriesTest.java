@@ -52,12 +52,14 @@ import org.apache.jackrabbit.oak.plugins.index.IndexUtils;
 import org.apache.jackrabbit.oak.plugins.index.PathFilter;
 import org.apache.jackrabbit.oak.plugins.index.property.OrderedIndex.OrderDirection;
 import org.apache.jackrabbit.oak.plugins.index.property.strategy.IndexStoreStrategy;
+import org.apache.jackrabbit.oak.plugins.index.property.strategy.MultiplexingIndexStoreStrategy;
 import org.apache.jackrabbit.oak.plugins.index.property.strategy.OrderedContentMirrorStoreStrategy;
 import org.apache.jackrabbit.oak.plugins.memory.MemoryNodeStore;
 import org.apache.jackrabbit.oak.plugins.nodetype.write.InitialContent;
 import org.apache.jackrabbit.oak.spi.commit.CommitInfo;
 import org.apache.jackrabbit.oak.spi.commit.Editor;
 import org.apache.jackrabbit.oak.spi.commit.EmptyHook;
+import org.apache.jackrabbit.oak.spi.mount.MountInfoProvider;
 import org.apache.jackrabbit.oak.spi.security.OpenSecurityProvider;
 import org.apache.jackrabbit.oak.spi.state.NodeBuilder;
 import org.apache.jackrabbit.oak.spi.state.NodeState;
@@ -176,13 +178,13 @@ public class Oak2077QueriesTest extends BasicOrderedPropertyIndexQueryTest {
         }
 
         @Override
-        IndexStoreStrategy getStrategy(boolean unique) {
+        MultiplexingIndexStoreStrategy getStrategy(boolean unique) {
             SeededOrderedMirrorStore store = new SeededOrderedMirrorStore();
             if (!OrderedIndex.DEFAULT_DIRECTION.equals(getDirection())) {
                 store = new SeededOrderedMirrorStore(DESC);
             }
             store.setRandom(rnd);
-            return store;
+            return new MultiplexingIndexStoreStrategy(store, MountInfoProvider.DEFAULT);
         }
 
         @Override

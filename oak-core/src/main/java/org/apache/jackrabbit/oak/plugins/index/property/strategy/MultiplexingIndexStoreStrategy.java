@@ -32,14 +32,26 @@ import org.apache.jackrabbit.oak.spi.state.NodeBuilder;
 import org.apache.jackrabbit.oak.spi.state.NodeState;
 import org.apache.jackrabbit.oak.spi.state.NodeStateUtils;
 
+import static org.apache.jackrabbit.oak.plugins.index.IndexConstants.INDEX_CONTENT_NODE_NAME;
+
 public class MultiplexingIndexStoreStrategy implements IndexStoreStrategy {
     private final ConfigurableStorageStrategy strategy;
     private final MountInfoProvider mountInfoProvider;
+    private final String indexNodeSuffix;
+    private final String defaultNodeName;
 
     public MultiplexingIndexStoreStrategy(ConfigurableStorageStrategy strategy,
-                                          MountInfoProvider mountInfoProvider) {
+                                          MountInfoProvider mountInfoProvider){
+        this(strategy, mountInfoProvider, INDEX_CONTENT_NODE_NAME);
+    }
+
+    public MultiplexingIndexStoreStrategy(ConfigurableStorageStrategy strategy,
+                                          MountInfoProvider mountInfoProvider,
+                                          String defaultNodeName) {
         this.strategy = strategy;
         this.mountInfoProvider = mountInfoProvider;
+        this.defaultNodeName = defaultNodeName;
+        this.indexNodeSuffix = "-" + stripStartingColon(defaultNodeName);
     }
 
     @Override
@@ -108,11 +120,16 @@ public class MultiplexingIndexStoreStrategy implements IndexStoreStrategy {
         return count;
     }
 
-    public static String getNodeForMount(Mount mount, String suffix){
+    public String getIndexNodeName(String path){
+        Mount mount = mountInfoProvider.getMountInfo(path);
+        return getNodeForMount(mount);
+    }
+
+    public String getNodeForMount(Mount mount){
         if (mount.isDefault()) {
-            return ":" + suffix;
+            return defaultNodeName;
         }
-        return ":" + mount.getPathFragmentName() + "-" + suffix;
+        return ":" + mount.getPathFragmentName() + indexNodeSuffix;
     }
 
     private boolean noMounts() {
@@ -120,7 +137,13 @@ public class MultiplexingIndexStoreStrategy implements IndexStoreStrategy {
     }
 
     private boolean isIndexStorageNode(String name) {
-        return NodeStateUtils.isHidden(name) && name.endsWith("index");
+        return NodeStateUtils.isHidden(name) && (name.equals(defaultNodeName) || name.endsWith(indexNodeSuffix));
     }
 
+    private static String stripStartingColon(String name){
+        if (name.startsWith(":")){
+            return name.substring(1);
+        }
+        return name;
+    }
 }

@@ -47,7 +47,6 @@ import org.apache.jackrabbit.oak.plugins.index.property.strategy.MultiplexingInd
 import org.apache.jackrabbit.oak.plugins.index.property.strategy.UniqueEntryStoreStrategy;
 import org.apache.jackrabbit.oak.plugins.nodetype.TypePredicate;
 import org.apache.jackrabbit.oak.spi.commit.Editor;
-import org.apache.jackrabbit.oak.spi.mount.Mount;
 import org.apache.jackrabbit.oak.spi.mount.MountInfoProvider;
 import org.apache.jackrabbit.oak.spi.query.PropertyValues;
 import org.apache.jackrabbit.oak.spi.state.NodeBuilder;
@@ -70,12 +69,6 @@ class PropertyIndexEditor implements IndexEditor {
     /** Index storage strategy */
     private static final UniqueEntryStoreStrategy UNIQUE =
             new UniqueEntryStoreStrategy();
-
-    /**
-     * Suffix name used for node names under which index data would be stored.
-     * For default setup the actual node name would be like ":index"
-     */
-    public static final String INDEX_NODE_SUFFIX = "index";
 
     /** Parent editor, or {@code null} if this is the root editor. */
     private final PropertyIndexEditor parent;
@@ -234,7 +227,7 @@ class PropertyIndexEditor implements IndexEditor {
         return keys;
     }
 
-    IndexStoreStrategy getStrategy(boolean unique) {
+    MultiplexingIndexStoreStrategy getStrategy(boolean unique) {
         //[multiplex] TODO Avoid creating new instance and maintain them in root state OAK-3757
         return unique ? new MultiplexingIndexStoreStrategy(UNIQUE, mountInfoProvider) :
                 new MultiplexingIndexStoreStrategy(MIRROR, mountInfoProvider);
@@ -300,14 +293,16 @@ class PropertyIndexEditor implements IndexEditor {
 
             if (!beforeKeys.isEmpty() || !afterKeys.isEmpty()) {
                 updateCallback.indexUpdate();
-                NodeBuilder index = getIndexNode();
-                String properties = definition.getString(PROPERTY_NAMES);
                 boolean uniqueIndex = keysToCheckForUniqueness != null;
+                MultiplexingIndexStoreStrategy strategy = getStrategy(uniqueIndex);
+                NodeBuilder index = getIndexNode(strategy);
+                String properties = definition.getString(PROPERTY_NAMES);
+
                 if (uniqueIndex) {
                     keysToCheckForUniqueness.addAll(
                             getExistingKeys(afterKeys));
                 }
-                getStrategy(uniqueIndex).update(
+                strategy.update(
                         index, getPath(), properties, definition, beforeKeys, afterKeys);
             }
         }
@@ -360,6 +355,7 @@ class PropertyIndexEditor implements IndexEditor {
         }
         return existing;
     }
+
     /**
      * From a set of keys, get the first that has multiple entries, if any.
      * 
@@ -457,14 +453,10 @@ class PropertyIndexEditor implements IndexEditor {
     }
 
     private boolean keyExists(String key) {
-        //[multiplex] TODO Change the getStrategy to return MultiplexingIndexStoreStrategy but that would
-        //require change in OrderedIndex. So for now keep it this way
-        MultiplexingIndexStoreStrategy s = (MultiplexingIndexStoreStrategy) getStrategy(true);
-        return s.existsInAnyStore(definition, key);
+        return getStrategy(true).existsInAnyStore(definition, key);
     }
 
-    private NodeBuilder getIndexNode() {
-        Mount mount = mountInfoProvider.getMountInfo(getPath());
-        return definition.child(MultiplexingIndexStoreStrategy.getNodeForMount(mount, INDEX_NODE_SUFFIX));
+    private NodeBuilder getIndexNode(MultiplexingIndexStoreStrategy store) {
+        return definition.child(store.getIndexNodeName(getPath()));
     }
 }

@@ -29,7 +29,9 @@ import org.apache.jackrabbit.oak.plugins.index.IndexConstants;
 import org.apache.jackrabbit.oak.plugins.index.IndexUpdateCallback;
 import org.apache.jackrabbit.oak.plugins.index.PathFilter;
 import org.apache.jackrabbit.oak.plugins.index.property.OrderedIndex.OrderDirection;
+import org.apache.jackrabbit.oak.plugins.index.property.strategy.ContentMirrorStoreStrategy;
 import org.apache.jackrabbit.oak.plugins.index.property.strategy.IndexStoreStrategy;
+import org.apache.jackrabbit.oak.plugins.index.property.strategy.MultiplexingIndexStoreStrategy;
 import org.apache.jackrabbit.oak.plugins.index.property.strategy.OrderedContentMirrorStoreStrategy;
 import org.apache.jackrabbit.oak.spi.mount.MountInfoProvider;
 import org.apache.jackrabbit.oak.spi.state.NodeBuilder;
@@ -47,12 +49,13 @@ public class OrderedPropertyIndexEditor extends PropertyIndexEditor {
     /**
      * the default Ascending ordered StoreStrategy
      */
-    static final IndexStoreStrategy ORDERED_MIRROR = new OrderedContentMirrorStoreStrategy();
+    static final ContentMirrorStoreStrategy ORDERED_MIRROR = new OrderedContentMirrorStoreStrategy();
     
     /**
      * the Descending ordered StoreStrategy
      */
-    static final IndexStoreStrategy ORDERED_MIRROR_DESCENDING = new OrderedContentMirrorStoreStrategy(OrderDirection.DESC);
+    static final ContentMirrorStoreStrategy ORDERED_MIRROR_DESCENDING
+            = new OrderedContentMirrorStoreStrategy(OrderDirection.DESC);
 
     private static final Logger LOG = LoggerFactory.getLogger(OrderedPropertyIndexEditor.class);
     
@@ -116,12 +119,12 @@ public class OrderedPropertyIndexEditor extends PropertyIndexEditor {
      * @return the proper index strategy
      */
     @Override
-    IndexStoreStrategy getStrategy(boolean unique) {
-        IndexStoreStrategy store = ORDERED_MIRROR;
+    MultiplexingIndexStoreStrategy getStrategy(boolean unique) {
+        ContentMirrorStoreStrategy store = ORDERED_MIRROR;
         if (!OrderedIndex.DEFAULT_DIRECTION.equals(getDirection())) {
             store = ORDERED_MIRROR_DESCENDING;
         }
-        return store;
+        return new MultiplexingIndexStoreStrategy(store, MountInfoProvider.DEFAULT) ;
     }
 
     public boolean isProperlyConfigured() {
