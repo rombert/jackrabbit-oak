@@ -59,6 +59,7 @@ import org.apache.jackrabbit.oak.spi.commit.EditorProvider;
 import org.apache.jackrabbit.oak.spi.commit.Observer;
 import org.apache.jackrabbit.oak.spi.commit.PartialConflictHandler;
 import org.apache.jackrabbit.oak.spi.lifecycle.RepositoryInitializer;
+import org.apache.jackrabbit.oak.spi.mount.MountInfoProvider;
 import org.apache.jackrabbit.oak.spi.query.QueryIndexProvider;
 import org.apache.jackrabbit.oak.spi.security.SecurityProvider;
 import org.apache.jackrabbit.oak.spi.state.NodeStore;
@@ -104,6 +105,7 @@ public class Jcr {
 
     private ContentRepository contentRepository;
     private Repository repository;
+    private MountInfoProvider mountInfoProvider = MountInfoProvider.DEFAULT;
 
     public Jcr(Oak oak) {
         this.oak = oak;
@@ -120,13 +122,13 @@ public class Jcr {
         with(new TypeEditorProvider());
         with(new ConflictValidatorProvider());
         with(new AtomicCounterEditorProvider());
-        with(new ReferenceEditorProvider());
-        with(new ReferenceIndexProvider());
+        with(new ReferenceEditorProvider().with(mountInfoProvider));
+        with(new ReferenceIndexProvider().with(mountInfoProvider));
 
-        with(new PropertyIndexEditorProvider());
+        with(new PropertyIndexEditorProvider().with(mountInfoProvider));
         with(new NodeCounterEditorProvider());
 
-        with(new PropertyIndexProvider());
+        with(new PropertyIndexProvider().with(mountInfoProvider));
         with(new OrderedPropertyIndexProvider());
         with(new NodeTypeIndexProvider());
 
@@ -269,6 +271,13 @@ public class Jcr {
     public Jcr with(@Nonnull Whiteboard whiteboard) {
         ensureRepositoryIsNotCreated();
         this.whiteboard = checkNotNull(whiteboard);
+        return this;
+    }
+
+    @Nonnull
+    public Jcr with(@Nonnull MountInfoProvider mountInfoProvider) {
+        ensureRepositoryIsNotCreated();
+        this.mountInfoProvider = checkNotNull(mountInfoProvider);
         return this;
     }
 

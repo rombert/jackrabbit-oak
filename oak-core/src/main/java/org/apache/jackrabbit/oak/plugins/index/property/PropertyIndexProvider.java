@@ -49,4 +49,9 @@ public class PropertyIndexProvider implements QueryIndexProvider {
     public List<QueryIndex> getQueryIndexes(NodeState state) {
         return ImmutableList.<QueryIndex>of(new PropertyIndex(mountInfoProvider));
     }
+
+    public PropertyIndexProvider with(MountInfoProvider mountInfoProvider) {
+        this.mountInfoProvider = mountInfoProvider;
+        return this;
+    }
 }
