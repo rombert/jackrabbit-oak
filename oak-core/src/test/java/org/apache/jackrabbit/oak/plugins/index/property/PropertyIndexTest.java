@@ -55,6 +55,7 @@ import org.apache.jackrabbit.oak.api.Tree;
 import org.apache.jackrabbit.oak.api.Type;
 import org.apache.jackrabbit.oak.plugins.index.IndexUpdateProvider;
 import org.apache.jackrabbit.oak.plugins.index.property.strategy.ContentMirrorStoreStrategy;
+import org.apache.jackrabbit.oak.plugins.index.property.strategy.MultiplexingIndexStoreStrategy;
 import org.apache.jackrabbit.oak.plugins.memory.EmptyNodeState;
 import org.apache.jackrabbit.oak.plugins.multiplex.SimpleMountInfoProvider;
 import org.apache.jackrabbit.oak.query.QueryEngineSettings;
@@ -780,7 +781,7 @@ public class PropertyIndexTest {
         assertTrue(getNode(indexed, "/oak:index/foo/:index").exists());
 
         //Separate node for mount
-        assertTrue(getNode(indexed, "/oak:index/foo/"+ PropertyIndexEditor.getNodeForMount(fooMount)).exists());
+        assertTrue(getNode(indexed, "/oak:index/foo/"+ getNodeForMount(fooMount)).exists());
 
         //Index entries for paths in foo mount should go to :oak:foo-index
         assertTrue(getNode(indexed, pathInIndex(fooMount, "/oak:index/foo", "/a", "abc")).exists());
@@ -823,8 +824,12 @@ public class PropertyIndexTest {
         hook.processCommit(before, after, CommitInfo.EMPTY);
     }
 
+    private static String getNodeForMount(Mount mount){
+        return MultiplexingIndexStoreStrategy.getNodeForMount(mount, PropertyIndexEditor.INDEX_NODE_SUFFIX);
+    }
+
     private static String pathInIndex(Mount mount, String indexPath, String indexedPath, String indexedValue){
-        return indexPath + "/" + PropertyIndexEditor.getNodeForMount(mount) + "/" + indexedValue + indexedPath;
+        return indexPath + "/" + getNodeForMount(mount) + "/" + indexedValue + indexedPath;
     }
 
     private int getResultSize(NodeState indexed, String name, String value){

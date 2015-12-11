@@ -24,6 +24,7 @@ import java.util.Set;
 
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Lists;
+import org.apache.jackrabbit.oak.spi.mount.Mount;
 import org.apache.jackrabbit.oak.spi.mount.MountInfoProvider;
 import org.apache.jackrabbit.oak.spi.query.Filter;
 import org.apache.jackrabbit.oak.spi.state.ChildNodeEntry;
@@ -105,6 +106,13 @@ public class MultiplexingIndexStoreStrategy implements IndexStoreStrategy {
             }
         }
         return count;
+    }
+
+    public static String getNodeForMount(Mount mount, String suffix){
+        if (mount.isDefault()) {
+            return ":" + suffix;
+        }
+        return ":" + mount.getPathFragmentName() + "-" + suffix;
     }
 
     private boolean noMounts() {

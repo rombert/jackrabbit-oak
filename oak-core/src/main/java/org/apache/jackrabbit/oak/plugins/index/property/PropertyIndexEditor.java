@@ -71,6 +71,12 @@ class PropertyIndexEditor implements IndexEditor {
     private static final UniqueEntryStoreStrategy UNIQUE =
             new UniqueEntryStoreStrategy();
 
+    /**
+     * Suffix name used for node names under which index data would be stored.
+     * For default setup the actual node name would be like ":index"
+     */
+    public static final String INDEX_NODE_SUFFIX = "index";
+
     /** Parent editor, or {@code null} if this is the root editor. */
     private final PropertyIndexEditor parent;
 
@@ -459,13 +465,6 @@ class PropertyIndexEditor implements IndexEditor {
 
     private NodeBuilder getIndexNode() {
         Mount mount = mountInfoProvider.getMountInfo(getPath());
-        return definition.child(getNodeForMount(mount));
-    }
-
-    static String getNodeForMount(Mount mount){
-        if (mount.isDefault()) {
-            return INDEX_CONTENT_NODE_NAME;
-        }
-        return ":" + mount.getPathFragmentName() + "-index";
+        return definition.child(MultiplexingIndexStoreStrategy.getNodeForMount(mount, INDEX_NODE_SUFFIX));
     }
 }
