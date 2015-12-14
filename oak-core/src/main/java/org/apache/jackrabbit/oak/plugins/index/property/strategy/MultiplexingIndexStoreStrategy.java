@@ -121,7 +121,7 @@ public class MultiplexingIndexStoreStrategy implements IndexStoreStrategy {
     }
 
     public String getIndexNodeName(String path){
-        Mount mount = mountInfoProvider.getMountInfo(path);
+        Mount mount = mountInfoProvider.getMountByPath(path);
         return getNodeForMount(mount);
     }
 

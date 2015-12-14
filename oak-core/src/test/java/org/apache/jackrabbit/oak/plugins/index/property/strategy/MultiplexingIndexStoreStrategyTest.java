@@ -56,7 +56,7 @@ public class MultiplexingIndexStoreStrategyTest {
                 .mount("foo", "/a", "/b")
                 .build();
 
-        Mount m = mip.getMount("foo");
+        Mount m = mip.getMountByName("foo");
         MultiplexingIndexStoreStrategy store = new MultiplexingIndexStoreStrategy(new ContentMirrorStoreStrategy(),
                 mip);
 
