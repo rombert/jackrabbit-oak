@@ -54,12 +54,17 @@ class PermissionStoreImpl implements PermissionStore, PermissionConstants {
 
     private final Map<String, Tree> principalTreeMap = new HashMap<String, Tree>();
 
+    private final PermissionTreeProvider permissionTreeProvider;
+
     private Tree permissionsTree;
     private PrivilegeBits allBits;
 
-    PermissionStoreImpl(Root root, String workspaceName, RestrictionProvider restrictionProvider) {
+    PermissionStoreImpl(Root root, String workspaceName,
+                        RestrictionProvider restrictionProvider,
+                        PermissionTreeProvider permissionTreeProvider) {
         this.workspaceName = workspaceName;
         this.restrictionProvider = restrictionProvider;
+        this.permissionTreeProvider = permissionTreeProvider;
         reset(root);
     }
 
@@ -69,7 +74,7 @@ class PermissionStoreImpl implements PermissionStore, PermissionConstants {
     }
 
     private void reset(@Nonnull Root root) {
-        permissionsTree = PermissionUtil.getPermissionsRoot(root, workspaceName);
+        permissionsTree = permissionTreeProvider.getPermissionTree(root, workspaceName);
         allBits = new PrivilegeBitsProvider(root).getBits(PrivilegeConstants.JCR_ALL);
     }
 

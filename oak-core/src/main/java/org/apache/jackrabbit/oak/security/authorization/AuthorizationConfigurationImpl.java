@@ -30,6 +30,7 @@ import org.apache.felix.scr.annotations.Component;
 import org.apache.felix.scr.annotations.Properties;
 import org.apache.felix.scr.annotations.Property;
 import org.apache.felix.scr.annotations.PropertyOption;
+import org.apache.felix.scr.annotations.Reference;
 import org.apache.felix.scr.annotations.Service;
 import org.apache.jackrabbit.oak.api.Root;
 import org.apache.jackrabbit.oak.namepath.NamePathMapper;
@@ -48,6 +49,7 @@ import org.apache.jackrabbit.oak.spi.commit.CommitHook;
 import org.apache.jackrabbit.oak.spi.commit.MoveTracker;
 import org.apache.jackrabbit.oak.spi.commit.ValidatorProvider;
 import org.apache.jackrabbit.oak.spi.lifecycle.WorkspaceInitializer;
+import org.apache.jackrabbit.oak.spi.mount.MountInfoProvider;
 import org.apache.jackrabbit.oak.spi.security.CompositeConfiguration;
 import org.apache.jackrabbit.oak.spi.security.ConfigurationBase;
 import org.apache.jackrabbit.oak.spi.security.ConfigurationParameters;
@@ -107,6 +109,9 @@ public class AuthorizationConfigurationImpl extends ConfigurationBase implements
         super();
     }
 
+    @Reference
+    private MountInfoProvider mountInfoProvider;
+
     @SuppressWarnings("UnusedDeclaration")
     @Activate
     private void activate(Map<String, Object> properties) {
@@ -116,6 +121,8 @@ public class AuthorizationConfigurationImpl extends ConfigurationBase implements
 
     public AuthorizationConfigurationImpl(SecurityProvider securityProvider) {
         super(securityProvider, securityProvider.getParameters(NAME));
+        mountInfoProvider = getParameters().getConfigValue(AccessControlConstants.PARAM_MOUNT_PROVIDER,
+                MountInfoProvider.DEFAULT, MountInfoProvider.class);
     }
 
     //----------------------------------------------< SecurityConfiguration >---
@@ -134,7 +141,7 @@ public class AuthorizationConfigurationImpl extends ConfigurationBase implements
     @Nonnull
     @Override
     public WorkspaceInitializer getWorkspaceInitializer() {
-        return new AuthorizationInitializer();
+        return new AuthorizationInitializer(mountInfoProvider);
     }
 
     @Nonnull
@@ -142,7 +149,7 @@ public class AuthorizationConfigurationImpl extends ConfigurationBase implements
     public List<? extends CommitHook> getCommitHooks(@Nonnull String workspaceName) {
         return ImmutableList.of(
                 new VersionablePathHook(workspaceName),
-                new PermissionHook(workspaceName, getRestrictionProvider()));
+                new PermissionHook(workspaceName, getRestrictionProvider(), mountInfoProvider));
     }
 
     @Nonnull
@@ -182,6 +189,6 @@ public class AuthorizationConfigurationImpl extends ConfigurationBase implements
     @Override
     public PermissionProvider getPermissionProvider(@Nonnull Root root, @Nonnull String workspaceName, @Nonnull Set<Principal> principals) {
         Context ctx = getSecurityProvider().getConfiguration(AuthorizationConfiguration.class).getContext();
-        return new PermissionProviderImpl(root, workspaceName, principals, getRestrictionProvider(), getParameters(), ctx);
+        return new PermissionProviderImpl(root, workspaceName, principals, getRestrictionProvider(), getParameters(), ctx, mountInfoProvider);
     }
 }

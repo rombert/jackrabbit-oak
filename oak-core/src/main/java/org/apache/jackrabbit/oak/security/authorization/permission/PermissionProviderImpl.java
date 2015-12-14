@@ -28,6 +28,7 @@ import org.apache.jackrabbit.oak.plugins.tree.RootFactory;
 import org.apache.jackrabbit.oak.plugins.tree.TreeLocation;
 import org.apache.jackrabbit.oak.plugins.tree.TreeType;
 import org.apache.jackrabbit.oak.plugins.version.VersionConstants;
+import org.apache.jackrabbit.oak.spi.mount.MountInfoProvider;
 import org.apache.jackrabbit.oak.spi.security.ConfigurationParameters;
 import org.apache.jackrabbit.oak.spi.security.Context;
 import org.apache.jackrabbit.oak.spi.security.authorization.accesscontrol.AccessControlConstants;
@@ -58,7 +59,8 @@ public class PermissionProviderImpl implements PermissionProvider, AccessControl
                                   @Nonnull Set<Principal> principals,
                                   @Nonnull RestrictionProvider restrictionProvider,
                                   @Nonnull ConfigurationParameters options,
-                                  @Nonnull Context ctx) {
+                                  @Nonnull Context ctx,
+                                  @Nonnull MountInfoProvider mountInfoProvider) {
         this.root = root;
         this.workspaceName = workspaceName;
         this.ctx = ctx;
@@ -68,7 +70,7 @@ public class PermissionProviderImpl implements PermissionProvider, AccessControl
         if (PermissionUtil.isAdminOrSystem(principals, options)) {
             compiledPermissions = AllPermissions.getInstance();
         } else {
-            compiledPermissions = CompiledPermissionImpl.create(immutableRoot, workspaceName, principals, restrictionProvider, options, ctx);
+            compiledPermissions = CompiledPermissionImpl.create(immutableRoot, workspaceName, principals, restrictionProvider, options, ctx, mountInfoProvider);
         }
     }
 

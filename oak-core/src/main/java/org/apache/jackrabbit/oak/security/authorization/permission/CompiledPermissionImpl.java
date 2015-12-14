@@ -42,6 +42,7 @@ import org.apache.jackrabbit.oak.plugins.tree.TreeTypeProvider;
 import org.apache.jackrabbit.oak.namepath.NamePathMapper;
 import org.apache.jackrabbit.oak.plugins.tree.impl.ImmutableTree;
 import org.apache.jackrabbit.oak.plugins.version.ReadOnlyVersionManager;
+import org.apache.jackrabbit.oak.spi.mount.MountInfoProvider;
 import org.apache.jackrabbit.oak.spi.security.ConfigurationParameters;
 import org.apache.jackrabbit.oak.spi.security.Context;
 import org.apache.jackrabbit.oak.spi.security.authorization.permission.PermissionConstants;
@@ -73,7 +74,7 @@ final class CompiledPermissionImpl implements CompiledPermissions, PermissionCon
 
     private final String workspaceName;
     private final ReadPolicy readPolicy;
-    private final PermissionStoreImpl store;
+    private final MultiplexingPermissionStore store;
     private final PermissionEntryProvider userStore;
     private final PermissionEntryProvider groupStore;
     private final TreeTypeProvider typeProvider;
@@ -86,7 +87,8 @@ final class CompiledPermissionImpl implements CompiledPermissions, PermissionCon
                                    @Nonnull Root root, @Nonnull String workspaceName,
                                    @Nonnull RestrictionProvider restrictionProvider,
                                    @Nonnull ConfigurationParameters options,
-                                   @Nonnull Context ctx) {
+                                   @Nonnull Context ctx,
+                                   @Nonnull MountInfoProvider mountInfoProvider) {
         this.root = root;
         this.workspaceName = workspaceName;
 
@@ -96,7 +98,7 @@ final class CompiledPermissionImpl implements CompiledPermissions, PermissionCon
         readPolicy = (readPaths.isEmpty()) ? EmptyReadPolicy.INSTANCE : new DefaultReadPolicy(readPaths);
 
         // setup
-        store = new PermissionStoreImpl(root, workspaceName, restrictionProvider);
+        store = new MultiplexingPermissionStore(root, workspaceName, restrictionProvider, mountInfoProvider);
         Set<String> userNames = new HashSet<String>(principals.size());
         Set<String> groupNames = new HashSet<String>(principals.size());
         for (Principal principal : principals) {
@@ -118,12 +120,13 @@ final class CompiledPermissionImpl implements CompiledPermissions, PermissionCon
                                       @Nonnull Set<Principal> principals,
                                       @Nonnull RestrictionProvider restrictionProvider,
                                       @Nonnull ConfigurationParameters options,
-                                      @Nonnull Context ctx) {
+                                      @Nonnull Context ctx,
+                                      @Nonnull MountInfoProvider mountInfoProvider) {
         Tree permissionsTree = PermissionUtil.getPermissionsRoot(root, workspaceName);
         if (!permissionsTree.exists() || principals.isEmpty()) {
             return NoPermissions.getInstance();
         } else {
-            return new CompiledPermissionImpl(principals, root, workspaceName, restrictionProvider, options, ctx);
+            return new CompiledPermissionImpl(principals, root, workspaceName, restrictionProvider, options, ctx, mountInfoProvider);
         }
     }
 
