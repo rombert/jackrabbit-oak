@@ -133,7 +133,7 @@ public class MultiplexingIndexStoreStrategy implements IndexStoreStrategy {
     }
 
     private boolean noMounts() {
-        return mountInfoProvider.getNonDefaultMounts().isEmpty();
+        return !mountInfoProvider.hasNonDefaultMounts();
     }
 
     private boolean isIndexStorageNode(String name) {
