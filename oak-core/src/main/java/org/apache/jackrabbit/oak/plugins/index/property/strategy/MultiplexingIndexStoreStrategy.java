@@ -132,6 +132,10 @@ public class MultiplexingIndexStoreStrategy implements IndexStoreStrategy {
         return ":" + mount.getPathFragmentName() + indexNodeSuffix;
     }
 
+    public IndexStoreStrategy getDelegate(){
+        return strategy;
+    }
+
     private boolean noMounts() {
         return !mountInfoProvider.hasNonDefaultMounts();
     }

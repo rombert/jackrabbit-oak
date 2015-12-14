@@ -137,7 +137,7 @@ public class OrderedPropertyIndexEditorTest {
         OrderedPropertyIndexEditor editor = new OrderedPropertyIndexEditor(
                 definition, null, null);
         assertEquals(OrderedPropertyIndexEditor.ORDERED_MIRROR,
-                editor.getStrategy(false));
+                editor.getStrategy(false).getDelegate());
 
         definition = EmptyNodeState.EMPTY_NODE.builder();
         definition.setProperty(IndexConstants.PROPERTY_NAMES, property);
@@ -145,6 +145,6 @@ public class OrderedPropertyIndexEditorTest {
                 OrderDirection.DESC.getDirection());
         editor = new OrderedPropertyIndexEditor(definition, null, null);
         assertEquals(OrderedPropertyIndexEditor.ORDERED_MIRROR_DESCENDING,
-                editor.getStrategy(false));
+                editor.getStrategy(false).getDelegate());
    }
 }
