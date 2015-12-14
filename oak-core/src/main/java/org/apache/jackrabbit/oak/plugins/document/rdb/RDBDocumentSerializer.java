@@ -182,6 +182,7 @@ public class RDBDocumentSerializer {
      */
     @Nonnull
     public <T extends Document> T fromRow(@Nonnull Collection<T> collection, @Nonnull RDBRow row) throws DocumentStoreException {
+        // TODO - should use the DocumentCreationCustomiser
         T doc = collection.newDocument(store);
         doc.put(ID, row.getId());
         doc.put(MODIFIED, row.getModified());

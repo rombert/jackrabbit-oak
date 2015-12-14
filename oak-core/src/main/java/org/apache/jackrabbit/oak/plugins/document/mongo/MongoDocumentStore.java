@@ -1199,7 +1199,7 @@ public class MongoDocumentStore implements DocumentStore {
 
     @Nonnull
     private <T extends Document> T applyChanges(Collection<T> collection, T oldDoc, UpdateOp update) {
-        T doc = collection.newDocument(this);
+        T doc = customiser.newDocument(collection);
         oldDoc.deepCopy(doc);
         UpdateUtils.applyChanges(doc, update);
         doc.seal();
