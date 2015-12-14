@@ -73,6 +73,7 @@ class Collision {
             return theirRev;
         }
         // their commit wins, we have to mark ourRev
+        // TODO - should use the DocumentCreationCustomiser
         NodeDocument newDoc = Collection.NODES.newDocument(store);
         document.deepCopy(newDoc);
         UpdateUtils.applyChanges(newDoc, ourOp);
