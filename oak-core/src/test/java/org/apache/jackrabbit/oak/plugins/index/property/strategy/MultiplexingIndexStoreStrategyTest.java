@@ -130,13 +130,13 @@ public class MultiplexingIndexStoreStrategyTest {
         ConfigurableStorageStrategy s = new TestStrategy() {
             @Override
             public Iterable<String> query(Filter filter, String indexName, NodeState indexMeta, Iterable<String> values) {
-                return asList("/a", "/b");
+                throw new AssertionError();
             }
 
             @Override
             public Iterable<String> query(Filter filter, String indexName, NodeState indexMeta,
                                           String indexStorageNodeName, Iterable<String> values) {
-                throw new AssertionError();
+                return asList("/a", "/b");
             }
         };
 
