@@ -17,6 +17,8 @@ import static org.junit.Assert.assertNotNull;
 import org.apache.jackrabbit.oak.plugins.document.UpdateOp.Condition;
 import org.apache.jackrabbit.oak.plugins.document.UpdateOp.Key;
 import org.apache.jackrabbit.oak.plugins.document.memory.MemoryDocumentStore;
+import org.apache.jackrabbit.oak.plugins.multiplex.SimpleMountInfoProvider;
+import org.apache.jackrabbit.oak.spi.mount.MountInfoProvider;
 import org.hamcrest.Description;
 import org.junit.Before;
 import org.junit.Test;
@@ -42,6 +44,12 @@ public class MultiplexingDocumentStoreTest {
      */
     @Before
     public void prepareMultiplexingStore() {
+        
+        
+        MountInfoProvider mip = SimpleMountInfoProvider.newBuilder()
+                .mount("subMount", "/1c")
+                .build();
+        
         rootStore = new MemoryDocumentStore();
         subStore = new MemoryDocumentStore();
         
@@ -52,9 +60,9 @@ public class MultiplexingDocumentStoreTest {
         writeNode(rootStore, "1:/1d");
         writeNode(rootStore, "1:/1e");
         
-        store = new MultiplexingDocumentStore.Builder()
+        store = new MultiplexingDocumentStore.Builder(mip)
             .root(rootStore)
-            .mount("/1c", subStore)
+            .mount("subMount", subStore)
             .build();
     }
     

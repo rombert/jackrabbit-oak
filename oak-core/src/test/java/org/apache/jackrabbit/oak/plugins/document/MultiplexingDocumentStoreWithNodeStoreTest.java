@@ -13,6 +13,8 @@ import org.apache.jackrabbit.oak.api.ContentSession;
 import org.apache.jackrabbit.oak.api.Root;
 import org.apache.jackrabbit.oak.api.Tree;
 import org.apache.jackrabbit.oak.plugins.document.util.MongoConnection;
+import org.apache.jackrabbit.oak.plugins.multiplex.SimpleMountInfoProvider;
+import org.apache.jackrabbit.oak.spi.mount.MountInfoProvider;
 import org.apache.jackrabbit.oak.spi.security.OpenSecurityProvider;
 import org.junit.After;
 import org.junit.Before;
@@ -32,13 +34,18 @@ public class MultiplexingDocumentStoreWithNodeStoreTest {
     @Before
     public void createContentRepository() throws Exception{
         
+        MountInfoProvider mip = SimpleMountInfoProvider.newBuilder()
+                .mount("tmp", "/tmp")
+                .build();
+        
         // 1. Connect to MongoDB
         connection = new MongoConnection("mongodb://localhost:27017/oak");
         dropMongoDatabase();
         
         // 2. configure the DocumentNodeStore with a multiplexing document store, with a mount at "/tmp"
         DocumentMK.Builder builder = new DocumentMK.Builder();
-        builder.addMongoDbMount("/tmp", "mongodb://localhost:27017/oak", "oak", "private");
+        builder.setMountInfoProvider(mip);
+        builder.addMongoDbMount("tmp", "mongodb://localhost:27017/oak", "oak", "private");
         builder.setMongoDB(connection.getDB(), 1);
 
         DocumentNodeStore store = new DocumentNodeStore(builder);
@@ -107,6 +114,10 @@ public class MultiplexingDocumentStoreWithNodeStoreTest {
         
         @Override
         public void initDocumentMK() {
+            MountInfoProvider mip = SimpleMountInfoProvider.newBuilder()
+                    .mount("extra", "/extra")
+                    .build();
+            
             try {
                 boolean useMultiplexing = true;
                 boolean dropDatabase = true;
@@ -115,6 +126,7 @@ public class MultiplexingDocumentStoreWithNodeStoreTest {
                 String uri = "mongodb://localhost:27017/" + db;
                 
                 DocumentMK.Builder mkBuilder = new DocumentMK.Builder();
+                mkBuilder.setMountInfoProvider(mip);
 
                 MongoClientOptions.Builder builder = MongoConnection.getDefaultBuilder();
                 MongoClientURI mongoURI = new MongoClientURI(uri, builder);
@@ -133,7 +145,7 @@ public class MultiplexingDocumentStoreWithNodeStoreTest {
 
                 if ( useMultiplexing ) {
                     Map<String, String> mounts = Maps.newLinkedHashMap();
-                    mounts.put("/extra", "extra");
+                    mounts.put("extra", "extra");
                     
                     for (Map.Entry<String, String> entry : mounts.entrySet()) {
                         mkBuilder.addMongoDbMount(entry.getKey(), uri, db, entry.getValue());

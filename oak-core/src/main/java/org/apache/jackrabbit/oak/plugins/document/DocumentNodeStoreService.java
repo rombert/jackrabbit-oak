@@ -33,6 +33,7 @@ import static org.apache.jackrabbit.oak.spi.whiteboard.WhiteboardUtils.registerM
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Dictionary;
 import java.util.HashMap;
 import java.util.Hashtable;
@@ -74,6 +75,8 @@ import org.apache.jackrabbit.oak.plugins.identifier.ClusterRepositoryInfo;
 import org.apache.jackrabbit.oak.spi.blob.BlobStore;
 import org.apache.jackrabbit.oak.spi.blob.BlobStoreWrapper;
 import org.apache.jackrabbit.oak.spi.blob.GarbageCollectableBlobStore;
+import org.apache.jackrabbit.oak.spi.mount.Mount;
+import org.apache.jackrabbit.oak.spi.mount.MountInfoProvider;
 import org.apache.jackrabbit.oak.spi.state.NodeStore;
 import org.apache.jackrabbit.oak.spi.state.RevisionGC;
 import org.apache.jackrabbit.oak.spi.state.RevisionGCMBean;
@@ -225,7 +228,8 @@ public class DocumentNodeStoreService {
     
     @Property(value = "", 
             label="Mounts (optional)",
-            description="Mounted stores, in the '/path:collection_name' format. Only supported for MongoDB "
+            description="Mounted stores, in the 'mount_name:collection' format. The mount_name must refer to a "
+                    + "mount exposed by the MountInfoProviderService. Only supported for MongoDB "
                     + "at the moment. Collections will be created in the MongoDB instance configured for "
                     + "this DocumentNodeStore instance.", 
             unbounded = PropertyUnbounded.ARRAY)
@@ -265,6 +269,9 @@ public class DocumentNodeStoreService {
             target = "(datasource.name=oak)"
     )
     private volatile DataSource blobDataSource;
+    
+    @Reference
+    private MountInfoProvider mountInfoProvider;
 
     private DocumentMK mk;
     private ObserverTracker observerTracker;
@@ -434,15 +441,15 @@ public class DocumentNodeStoreService {
             for ( String rawMount : rawMounts ) {
                 List<String> split = Splitter.on(':').splitToList(rawMount);
                 Preconditions.checkArgument(split.size() == 2, "Invalid mount specification: '%s'", rawMount);
-                String path = split.get(0).trim();
-                String collection = split.get(1).trim();
+                String mountName = split.get(0).trim();
+                String collectionName = split.get(1).trim();
                 
-                Preconditions.checkArgument(!path.isEmpty(), "path is empty for mount specification '%s'", rawMount);
-                Preconditions.checkArgument(!collection.isEmpty(), "collection is empty for mount specification '%s'", rawMount);
-                Preconditions.checkArgument(path.length() > 1 && path.charAt(0) == '/', "path '%s' must be absolute and different from the root path", path);
+                Preconditions.checkArgument(!mountName.isEmpty(), "mountName is empty for mount specification '%s'", rawMount);
+                Preconditions.checkNotNull(mountInfoProvider.getMountByName(mountName), "mount with name '%s' not found in custom mount list '%s'", 
+                        mountName, mountInfoProvider.getNonDefaultMounts());
+                Preconditions.checkArgument(!collectionName.isEmpty(), "collectionName is empty for mount specification '%s'", rawMount);
 
-                mounts.put(path, collection);
-                
+                mounts.put(mountName, collectionName);
             }
 
             if (log.isInfoEnabled()) {
@@ -451,6 +458,7 @@ public class DocumentNodeStoreService {
                 log.info("Starting DocumentNodeStore with host={}, db={}, cache size (MB)={}, persistentCache={}, " +
                                 "blobCacheSize (MB)={}, maxReplicationLagInSecs={}",
                         mongoURI.getHosts(), db, cacheSize, persistentCache, blobCacheSize, maxReplicationLagInSecs);
+                
                 if ( mounts.size() > 0 ) {
                     log.info("Configuring mounts: {}", mounts);
                 }
@@ -461,6 +469,7 @@ public class DocumentNodeStoreService {
             for ( Map.Entry<String, String> entry : mounts.entrySet() ) {
                 mkBuilder.addMongoDbMount(entry.getKey(), uri, db, entry.getValue());
             }
+            mkBuilder.setMountInfoProvider(mountInfoProvider);
             mkBuilder.setMongoDB(uri, db, blobCacheSize);
 
             log.info("Connected to database '{}'", db);

@@ -25,8 +25,10 @@ import org.apache.jackrabbit.oak.plugins.document.DocumentNodeStore;
 import org.apache.jackrabbit.oak.plugins.document.util.MongoConnection;
 import org.apache.jackrabbit.oak.plugins.index.IndexConstants;
 import org.apache.jackrabbit.oak.plugins.index.IndexUtils;
+import org.apache.jackrabbit.oak.plugins.multiplex.SimpleMountInfoProvider;
 import org.apache.jackrabbit.oak.plugins.nodetype.write.InitialContent;
 import org.apache.jackrabbit.oak.spi.lifecycle.RepositoryInitializer;
+import org.apache.jackrabbit.oak.spi.mount.MountInfoProvider;
 import org.apache.jackrabbit.oak.spi.state.NodeBuilder;
 import org.junit.After;
 import org.junit.Before;
@@ -104,8 +106,12 @@ public class MultiplexingNodeStoreCurrentFailuresTest {
         }
 
         if ( useMultiplexing ) {
+            MountInfoProvider mip = SimpleMountInfoProvider.newBuilder()
+                    .mount("extra", "/extra")
+                    .build();
+            mkBuilder.setMountInfoProvider(mip);
             Map<String, String> mounts = Maps.newLinkedHashMap();
-            mounts.put("/extra", "extra");
+            mounts.put("extra", "extra");
             
             for (Map.Entry<String, String> entry : mounts.entrySet()) {
                 mkBuilder.addMongoDbMount(entry.getKey(), uri, db, entry.getValue());

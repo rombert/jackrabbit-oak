@@ -11,7 +11,8 @@ import org.apache.jackrabbit.oak.cache.CacheStats;
 import org.apache.jackrabbit.oak.plugins.document.UpdateOp.Condition;
 import org.apache.jackrabbit.oak.plugins.document.UpdateOp.Key;
 import org.apache.jackrabbit.oak.plugins.document.cache.CacheInvalidationStats;
-import org.apache.jackrabbit.util.Text;
+import org.apache.jackrabbit.oak.spi.mount.Mount;
+import org.apache.jackrabbit.oak.spi.mount.MountInfoProvider;
 
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
@@ -64,11 +65,15 @@ public class MultiplexingDocumentStore implements DocumentStore {
     
     private final List<DocumentStoreMount> mounts;
 
-    private MultiplexingDocumentStore(DocumentStore root, List<DocumentStoreMount> mounts) {
+    private final MountInfoProvider mountInfoProvider;
+
+    private MultiplexingDocumentStore(MountInfoProvider mountInfoProvider, DocumentStore root, List<DocumentStoreMount> mounts) {
+        
+        this.mountInfoProvider = mountInfoProvider;
         this.root = root;
         
         this.mounts = Lists.newArrayList();
-        this.mounts.add(new DocumentStoreMount(root, "/"));
+        this.mounts.add(new DocumentStoreMount(root, Mount.DEFAULT));
         this.mounts.addAll(mounts);
         
         for ( DocumentStoreMount mount : this.mounts ) {
@@ -79,10 +84,6 @@ public class MultiplexingDocumentStore implements DocumentStore {
     @Override
     public <T extends Document> T find(Collection<T> collection, String key) {
         return find(collection, key, Integer.MAX_VALUE);
-    }
-    
-    private boolean doNotMap(String path) {
-        return path.startsWith("/oak:");
     }
     
     private DocumentKey asDocumentKey(String key) {
@@ -106,9 +107,7 @@ public class MultiplexingDocumentStore implements DocumentStore {
             // Otherwise, we build from the id
             key = DocumentKey.fromKey(update.getId());
         }
-        if(doNotMap(key.getPath())) {
-            return root;
-        }
+        
         return findOwnerStore(key, collection, onFailure);
     }
     
@@ -121,52 +120,31 @@ public class MultiplexingDocumentStore implements DocumentStore {
         
         String path = key.getPath();
 
-        List<DocumentStoreMount> candidates = Lists.newArrayList();
-        
-        if ( path != null ) {
-        
-            if(doNotMap(path)) {
-                return root;
+        Mount mount = mountInfoProvider.getMountByPath(path);
+        for ( DocumentStoreMount dsMount : mounts ) {
+            if ( dsMount.getMount() == mount ) {
+                return dsMount.getStore();
             }
-            
-            // pick stores which can contribute
-            for ( DocumentStoreMount mount : mounts ) {
-                if ( Text.isDescendantOrEqual(mount.getMountPath(), path)) {
-                    candidates.add(mount);
-                }
-            }
-            
-            // sort candidates, longest paths first
-            Collections.sort(candidates, new Comparator<DocumentStoreMount>() {
-                @Override
-                public int compare(DocumentStoreMount o1, DocumentStoreMount o2) {
-                    return o2.getMountPath().length() - o1.getMountPath().length();
-                }
-            });
         }
         
-        if ( candidates.isEmpty()) {
-            
-            if ( onFailure == OnFailure.CALL_FIND_FOR_MATCHING_KEY) {
-                // split documents don't have reasonable id so we can't locate
-                // a store for them beforehand ;
-                for ( DocumentStoreMount mount : mounts ) {
-                    if ( mount.getStore().find(Collection.NODES, key.getValue()) != null ) {
-                        return mount.getStore();
-                    }
+        // TODO - still needed?
+        if ( onFailure == OnFailure.CALL_FIND_FOR_MATCHING_KEY) {
+            // split documents don't have reasonable id so we can't locate
+            // a store for them beforehand ;
+            for ( DocumentStoreMount dsMount : mounts ) {
+                if ( dsMount.getStore().find(Collection.NODES, key.getValue()) != null ) {
+                    return dsMount.getStore();
                 }
-
-                // if we have looked for the documents everywhere and still have not fond them return a no-op store
-                // this is safe since for query operations it will return no results ( which we already know to be true )
-                // and for any modifications it will fail fast
-                return NoopStore.INSTANCE;
             }
-            
-            throw new IllegalArgumentException("Could not find an owning store for key " + key.getValue() + " ( matched path = " + key.getPath() + ")");
-        }
 
-        // guaranteed to have at least one candidate since we mount the root store at '/'
-        return candidates.get(0).getStore();
+            // if we have looked for the documents everywhere and still have not fond them return a no-op store
+            // this is safe since for query operations it will return no results ( which we already know to be true )
+            // and for any modifications it will fail fast
+            return NoopStore.INSTANCE;
+        }
+        
+        throw new IllegalArgumentException("Could not find an owning store for key " + key.getValue() + " ( matched path = " + key.getPath() + ")");
+
     }
 
     @Override
@@ -215,15 +193,18 @@ public class MultiplexingDocumentStore implements DocumentStore {
 
     private List<DocumentStore> findStoresContainedBetween(DocumentKey from, DocumentKey to) {
         
-        boolean hasUncertainPaths = from.getPath() == null || to.getPath() == null;
-        List<DocumentStore> contained = Lists.newArrayList();
-        for ( DocumentStoreMount mount : mounts ) {
-            String storePath = mount.getMountPath();
-            if ( hasUncertainPaths || 
-                    (from.getPath().compareTo(storePath) < 0 && storePath.compareTo(to.getPath()) < 0 ) ) {
-                contained.add(mount.getStore());
+        List<DocumentStore> contained = Lists.newArrayListWithCapacity(mounts.size());
+        
+        
+        for ( Mount mount :  mountInfoProvider.getMountsContainedBetweenPaths(from.getPath(), to.getPath()) ) {
+            // TODO - index mounts by mount name
+            for ( DocumentStoreMount dsMount : mounts ) {
+                if ( dsMount.getMount() == mount ) {
+                    contained.add(dsMount.getStore());
+                }
             }
         }
+        
         return contained;
     }
     
@@ -392,9 +373,14 @@ public class MultiplexingDocumentStore implements DocumentStore {
      */
     public static class Builder {
         
+        private final MountInfoProvider mountInfoProvider;
         private DocumentStore root;
         private List<DocumentStoreMount> mounts = Lists.newArrayList();
         
+        public Builder(MountInfoProvider mountInfoProvider) {
+            this.mountInfoProvider = mountInfoProvider;
+        }
+
         public Builder root(DocumentStore store) {
             
             root = checkNotNull(store); 
@@ -402,18 +388,15 @@ public class MultiplexingDocumentStore implements DocumentStore {
             return this;
         }
         
-        public Builder mount(String path, DocumentStore store) {
+        public Builder mount(String name, DocumentStore store) {
             
             // TODO - check for duplicate mounts?
             
             checkNotNull(store);
-            checkNotNull(path);
-            if ( !Text.isDescendant("/", path)) {
-                throw new IllegalArgumentException("Invalid mount path '" + path +"'");
-            }
+            Mount mount = mountInfoProvider.getMountByName(name);
+            checkNotNull("Not mount by name '%s' defined", name);
             
-            
-            mounts.add(new DocumentStoreMount(store, path));
+            mounts.add(new DocumentStoreMount(store, mount));
             
             return this;
         }
@@ -425,7 +408,7 @@ public class MultiplexingDocumentStore implements DocumentStore {
             Preconditions.checkArgument(mounts.size() > 0, 
                     "Expected at least 1 mounts but got %s.", mounts.size());
             
-            return new MultiplexingDocumentStore(root, mounts); 
+            return new MultiplexingDocumentStore(mountInfoProvider, root, mounts); 
         }
     }
     
@@ -434,19 +417,19 @@ public class MultiplexingDocumentStore implements DocumentStore {
      */
     private static class DocumentStoreMount {
         private final DocumentStore store;
-        private final String mountPath;
+        private final Mount mount;
 
-        public DocumentStoreMount(DocumentStore store, String mountPath) {
+        public DocumentStoreMount(DocumentStore store, Mount mount) {
             this.store = store;
-            this.mountPath = mountPath;
+            this.mount = mount;
         }
         
         public DocumentStore getStore() {
             return store;
         }
         
-        public String getMountPath() {
-            return mountPath;
+        public Mount getMount() {
+            return mount;
         }
     }
     

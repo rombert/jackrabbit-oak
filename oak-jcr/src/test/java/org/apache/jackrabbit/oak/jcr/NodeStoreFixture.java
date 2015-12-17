@@ -35,10 +35,12 @@ import org.apache.jackrabbit.oak.plugins.document.memory.MemoryDocumentStore;
 import org.apache.jackrabbit.oak.plugins.document.rdb.RDBDataSourceFactory;
 import org.apache.jackrabbit.oak.plugins.document.rdb.RDBOptions;
 import org.apache.jackrabbit.oak.plugins.document.util.MongoConnection;
+import org.apache.jackrabbit.oak.plugins.multiplex.SimpleMountInfoProvider;
 import org.apache.jackrabbit.oak.plugins.segment.SegmentNodeStore;
 import org.apache.jackrabbit.oak.plugins.segment.SegmentStore;
 import org.apache.jackrabbit.oak.plugins.segment.memory.MemoryStore;
 import org.apache.jackrabbit.oak.spi.blob.BlobStore;
+import org.apache.jackrabbit.oak.spi.mount.MountInfoProvider;
 import org.apache.jackrabbit.oak.spi.state.NodeStore;
 
 import com.mongodb.DB;
@@ -128,14 +130,23 @@ public abstract class NodeStoreFixture {
 
         @Override
         public NodeStore createNodeStore() {
-            final DocumentStore ds = new MultiplexingDocumentStore.Builder()
+            MountInfoProvider mountInfoProvider = SimpleMountInfoProvider.newBuilder()
+            .mount("jcr_system", "/jcr:system")
+            .mount("foo", "/foo")
+            .mount("bar", "/bar")
+            .mount("test", "/test")
+            .mount("parent", "/parent")
+            .mount("n", "/n")
+            .build();
+            
+            final DocumentStore ds = new MultiplexingDocumentStore.Builder(mountInfoProvider)
             .root(new MemoryDocumentStore())
-            .mount("/jcr:system", new MemoryDocumentStore())
-            .mount("/foo", new MemoryDocumentStore())
-            .mount("/bar", new MemoryDocumentStore())
-            .mount("/test", new MemoryDocumentStore())
-            .mount("/parent", new MemoryDocumentStore())
-            .mount("/n", new MemoryDocumentStore())
+            .mount("jcr_system", new MemoryDocumentStore())
+            .mount("foo", new MemoryDocumentStore())
+            .mount("bar", new MemoryDocumentStore())
+            .mount("test", new MemoryDocumentStore())
+            .mount("parent", new MemoryDocumentStore())
+            .mount("n", new MemoryDocumentStore())
             .build();
             return new DocumentMK.Builder().setDocumentStore(ds).getNodeStore();
         }

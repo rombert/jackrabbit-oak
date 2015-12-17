@@ -17,6 +17,7 @@
 package org.apache.jackrabbit.oak.plugins.document;
 
 import static com.google.common.base.Preconditions.checkArgument;
+import static com.google.common.base.Preconditions.checkState;
 
 import java.io.InputStream;
 import java.util.List;
@@ -30,7 +31,7 @@ import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import javax.sql.DataSource;
 
-
+import com.google.common.base.Preconditions;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.Weigher;
@@ -70,6 +71,7 @@ import org.apache.jackrabbit.oak.plugins.document.util.StringValue;
 import org.apache.jackrabbit.oak.spi.blob.BlobStore;
 import org.apache.jackrabbit.oak.spi.blob.GarbageCollectableBlobStore;
 import org.apache.jackrabbit.oak.spi.blob.MemoryBlobStore;
+import org.apache.jackrabbit.oak.spi.mount.MountInfoProvider;
 import org.apache.jackrabbit.oak.stats.Clock;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -516,18 +518,23 @@ public class DocumentMK {
         private PersistentCache persistentCache;
         private List<MongoDbMount> mounts = Lists.newArrayList();
         private LeaseFailureHandler leaseFailureHandler;
+        private MountInfoProvider mountInfoProvider;
 
         public Builder() {
             
         }
         
+        public void setMountInfoProvider(MountInfoProvider mountInfoProvider) {
+            this.mountInfoProvider = mountInfoProvider;
+        }
+        
+        
         /**
-         * 
          * Add a mount based on MongoDB
          * 
          * <p>Must be called before {@link #setMongoDB(DB, int, int)} to have effect.</p>
          * 
-         * @param mountPath the path where the collection will be mounted, e.g. <tt>/etc</tt>
+         * @param mountName the name of a mount as reported by the <tt>MountInfoProvider</tt>
          * @param uri a MongoDB URI.
          * @param name the name of the database to connect to. This overrides
          *             any database name given in the {@code uri}.
@@ -535,10 +542,10 @@ public class DocumentMK {
          * @throws UnknownHostException if one of the hosts given in the URI
          *          is unknown.
          */
-        public void addMongoDbMount(String mountPath, @Nonnull String uri,
+        public void addMongoDbMount(String mountName, @Nonnull String uri,
                 @Nonnull String name, String collectionPrefix) throws UnknownHostException {
             MongoDbMount m = new MongoDbMount();
-            m.mountPath = mountPath;
+            m.mountName = mountName;
             m.db = new MongoConnection(uri).getDB(name);
             if (!MongoConnection.hasWriteConcern(uri)) {
                 m.db.setWriteConcern(MongoConnection.getDefaultWriteConcern(m.db));
@@ -594,15 +601,18 @@ public class DocumentMK {
             if (this.documentStore == null) {
                 
                 if ( mounts.size() > 0 ) {
+                    
+                    checkState(mountInfoProvider != null, "At least one mount is defined but mountInfoProvider is null");
                 
                     MongoDocumentStore root = new MongoDocumentStore(db, this);
                     
-                    MultiplexingDocumentStore.Builder builder = new MultiplexingDocumentStore.Builder();
+                    MultiplexingDocumentStore.Builder builder = new MultiplexingDocumentStore.Builder(mountInfoProvider);
                     builder.root(root);
                     
                     for ( MongoDbMount mount : mounts ) {
+                        
                         MongoDocumentStore store = new MongoDocumentStore(mount.db, this, mount.colectionPrefix);
-                        builder.mount(mount.mountPath, store);
+                        builder.mount(mount.mountName, store);
                     }
                     
                     this.documentStore = builder.build();
@@ -1070,10 +1080,11 @@ public class DocumentMK {
         
         private static class MongoDbMount {
             
-            private String mountPath;
+            private String mountName;
             private DB db;
             private String colectionPrefix;
         }
+
     }
     
 }
