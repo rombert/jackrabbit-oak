@@ -107,7 +107,7 @@ public class MultiplexingIndexStoreStrategy implements IndexStoreStrategy {
     @Override
     public long count(Filter filter, NodeState root, NodeState indexMeta, Set<String> values, int max) {
         if (noMounts()) {
-            return strategy.count(filter, root, indexMeta, values, max);
+            return strategy.count(filter, root, indexMeta, defaultNodeName, values, max);
         }
 
         long count = 0;

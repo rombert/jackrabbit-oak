@@ -78,13 +78,13 @@ public class MultiplexingIndexStoreStrategyTest {
             @Override
             public long count(Filter filter, NodeState root, NodeState indexMeta,
                               String indexStorageNodeName, Set<String> values, int max) {
-                throw new AssertionError();
+                return 42;
             }
 
             @Override
             public long count(Filter filter, NodeState root, NodeState indexMeta,
                               Set<String> values, int max) {
-                return 42;
+                throw new AssertionError();
             }
         };
 
