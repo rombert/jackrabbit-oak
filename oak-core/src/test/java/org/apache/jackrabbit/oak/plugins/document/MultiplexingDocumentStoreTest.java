@@ -22,7 +22,7 @@ import org.apache.jackrabbit.oak.spi.mount.MountInfoProvider;
 import org.hamcrest.Description;
 import org.junit.Before;
 import org.junit.Test;
-import org.junit.internal.matchers.TypeSafeMatcher;
+import org.hamcrest.TypeSafeMatcher;
 
 import com.google.common.collect.Maps;
 
