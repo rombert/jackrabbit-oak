@@ -105,6 +105,17 @@ public class MultiplexingDocumentStoreTest {
         
         assertThat(nodes, NodeListMatcher.nodeListWithKeys("1:/1b", "1:/1c", "1:/1d"));
     }
+
+    @Test
+    public void query_multipleStores_differentParents() {
+        
+        // validate that when the 'from' and 'to' have different parents, the right
+        // stores are queried
+        
+        List<NodeDocument> nodes = store.query(Collection.NODES, "0:/", "1:/1e", 10);
+        
+        assertThat(nodes, NodeListMatcher.nodeListWithKeys("1:/1a", "1:/1b", "1:/1c", "1:/1d"));
+    }
     
     @Test
     public void query_multipleStores_obeysLimit() {

@@ -11,6 +11,7 @@ import org.apache.jackrabbit.oak.cache.CacheStats;
 import org.apache.jackrabbit.oak.plugins.document.UpdateOp.Condition;
 import org.apache.jackrabbit.oak.plugins.document.UpdateOp.Key;
 import org.apache.jackrabbit.oak.plugins.document.cache.CacheInvalidationStats;
+import org.apache.jackrabbit.oak.plugins.document.util.Utils;
 import org.apache.jackrabbit.oak.spi.mount.Mount;
 import org.apache.jackrabbit.oak.spi.mount.MountInfoProvider;
 
@@ -119,11 +120,13 @@ public class MultiplexingDocumentStore implements DocumentStore {
         }
         
         String path = key.getPath();
-
-        Mount mount = mountInfoProvider.getMountByPath(path);
-        for ( DocumentStoreMount dsMount : mounts ) {
-            if ( dsMount.getMount() == mount ) {
-                return dsMount.getStore();
+        
+        if ( path != null ) {
+            Mount mount = mountInfoProvider.getMountByPath(path);
+            for ( DocumentStoreMount dsMount : mounts ) {
+                if ( dsMount.getMount() == mount ) {
+                    return dsMount.getStore();
+                }
             }
         }
         
@@ -164,17 +167,22 @@ public class MultiplexingDocumentStore implements DocumentStore {
         
         DocumentKey from = asDocumentKey(fromKey);
         DocumentKey to = asDocumentKey(toKey);
+        DocumentStore owner = null;
         
         List<T> main;
         if ( from.getPath() != null && to.getPath() != null ) {
         
-            DocumentStore owner = findOwnerStore(from, collection, OnFailure.FAIL_FAST);
+            owner = findOwnerStore(from, collection, OnFailure.FAIL_FAST);
             main = owner.query(collection, fromKey, toKey, indexedProperty, startValue, limit);
         } else {
             main = Lists.newArrayList();
         }
         // TODO - do we need a query on the contributing stores or is a 'find' enough?
         for ( DocumentStore contributing : findStoresContainedBetween(from, to)) {
+            // prevent querying the owner twice
+            if ( contributing == owner ) {
+                continue;
+            }
             // TODO - stop the query if we know that we have enough results, e.g. we
             // have hit the limit with results between fromKey and contributing.getMountPath()  
             main.addAll(contributing.query(collection, fromKey, toKey, indexedProperty, startValue, limit));
@@ -195,14 +203,26 @@ public class MultiplexingDocumentStore implements DocumentStore {
         
         List<DocumentStore> contained = Lists.newArrayListWithCapacity(mounts.size());
         
-        
-        for ( Mount mount :  mountInfoProvider.getMountsContainedBetweenPaths(from.getPath(), to.getPath()) ) {
-            // TODO - index mounts by mount name
-            for ( DocumentStoreMount dsMount : mounts ) {
-                if ( dsMount.getMount() == mount ) {
-                    contained.add(dsMount.getStore());
+        if ( from.getPath() != null ) {
+
+            String parentId = Utils.getParentId(from.getPath());
+            if (parentId != null && parentId.equals(Utils.getParentId(to.getPath()))) {
+                String parentPath = Utils.getPathFromId(parentId);
+                for (Mount mount : mountInfoProvider.getMountsPlacedUnder(parentPath)) {
+                    // TODO - index mounts by mount name
+                    for (DocumentStoreMount dsMount : mounts) {
+                        if (dsMount.getMount() == mount) {
+                            contained.add(dsMount.getStore());
+                        }
+                    }
                 }
+             
+                return contained;
             }
+        }
+        
+        for ( DocumentStoreMount mount : mounts) {
+            contained.add(mount.getStore());
         }
         
         return contained;
