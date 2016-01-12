@@ -1,19 +1,37 @@
 package org.apache.jackrabbit.oak.fixture;
 
+import org.apache.jackrabbit.oak.plugins.document.DocumentMK;
+import org.apache.jackrabbit.oak.plugins.document.DocumentNodeStore;
+import org.apache.jackrabbit.oak.plugins.multiplex.SimpleMountInfoProvider;
+import org.apache.jackrabbit.oak.spi.mount.MountInfoProvider;
 import org.apache.jackrabbit.oak.spi.state.NodeStore;
 
-import com.amazonaws.services.redshift.model.UnauthorizedOperationException;
-
-public class MemoryMultiplexedFixture extends NodeStoreFixture {
+public class MultiplexedMemoryFixture extends NodeStoreFixture {
 
     @Override
     public NodeStore createNodeStore() {
-        throw new UnauthorizedOperationException("Not implemented");
+        
+        MountInfoProvider mip = SimpleMountInfoProvider.newBuilder()
+                .mount("tmp", "/tmp")
+                .build();
+        
+        DocumentMK.Builder builder = new DocumentMK.Builder();
+        builder.setMountInfoProvider(mip);
+        builder.addMemoryMount("tmp");
+
+        return builder.getNodeStore();
     }
     
     @Override
     public String toString() {
-        return "Multiplexed Memory NodeStore";
+        return getClass().getSimpleName();
+    }
+    
+    @Override
+    public void dispose(NodeStore nodeStore) {
+        if ( nodeStore instanceof DocumentNodeStore ) {
+            ((DocumentNodeStore) nodeStore).dispose();
+        }
     }
 
 }

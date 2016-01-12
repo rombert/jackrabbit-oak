@@ -54,6 +54,7 @@ import org.apache.jackrabbit.oak.plugins.blob.BlobStoreStats;
 import org.apache.jackrabbit.oak.plugins.blob.CachingBlobStore;
 import org.apache.jackrabbit.oak.plugins.blob.ReferencedBlob;
 import org.apache.jackrabbit.oak.plugins.document.DocumentNodeState.Children;
+import org.apache.jackrabbit.oak.plugins.document.MultiplexingDocumentStore.Builder;
 import org.apache.jackrabbit.oak.plugins.document.cache.NodeDocumentCache;
 import org.apache.jackrabbit.oak.plugins.document.locks.NodeDocumentLocks;
 import org.apache.jackrabbit.oak.plugins.document.memory.MemoryDocumentStore;
@@ -522,6 +523,7 @@ public class DocumentMK {
         private String persistentCacheURI = DEFAULT_PERSISTENT_CACHE_URI;
         private PersistentCache persistentCache;
         private List<MongoDbMount> mounts = Lists.newArrayList();
+        private Set<String> memoryMountNames = Sets.newLinkedHashSet();
         private LeaseFailureHandler leaseFailureHandler;
         private MountInfoProvider mountInfoProvider;
         private StatisticsProvider statisticsProvider = StatisticsProvider.NOOP;
@@ -561,6 +563,15 @@ public class DocumentMK {
             m.colectionPrefix = collectionPrefix;
             
             mounts.add(m);
+        }
+        
+        /**
+         * Adds a mount based on a <tt>MemoryDocumentStore</tt>
+         * 
+         * @param mountName the name of the mount
+         */
+        public void addMemoryMount(String mountName) {
+            memoryMountNames.add(mountName);
         }
 
 
@@ -760,7 +771,17 @@ public class DocumentMK {
 
         public DocumentStore getDocumentStore() {
             if (documentStore == null) {
-                documentStore = new MemoryDocumentStore();
+                
+                if ( !memoryMountNames.isEmpty() ) {
+                    MultiplexingDocumentStore.Builder builder = new MultiplexingDocumentStore.Builder(mountInfoProvider)
+                            .root(new MemoryDocumentStore());
+                    for ( String mountName : memoryMountNames ) {
+                        builder.mount(mountName, new MemoryDocumentStore());
+                    }
+                    documentStore = builder.build();
+                } else {
+                    documentStore = new MemoryDocumentStore();
+                }
             }
             return documentStore;
         }

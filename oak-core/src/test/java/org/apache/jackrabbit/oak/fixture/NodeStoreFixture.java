@@ -40,7 +40,7 @@ public abstract class NodeStoreFixture {
 
     public static final NodeStoreFixture DOCUMENT_RDB = new DocumentRdbFixture();
     
-    public static final NodeStoreFixture MEMORY_MULTI_NS = new MemoryMultiplexedFixture();
+    public static final NodeStoreFixture MEMORY_MULTI_NS = new MultiplexedMemoryFixture();
 
     /**
      * Creates a new empty {@link NodeStore} instance. An implementation must
@@ -82,7 +82,6 @@ public abstract class NodeStoreFixture {
         if (fixtures.contains(Fixture.DOCUMENT_RDB)) {
             configuredFixtures.add(DOCUMENT_RDB);
         }
-        
         if ( fixtures.contains(Fixture.MEMORY_MULTI_NS)) {
             configuredFixtures.add(MEMORY_MULTI_NS);
         }
