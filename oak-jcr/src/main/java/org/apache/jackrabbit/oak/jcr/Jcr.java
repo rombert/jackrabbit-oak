@@ -37,7 +37,6 @@ import org.apache.jackrabbit.oak.plugins.index.IndexEditorProvider;
 import org.apache.jackrabbit.oak.plugins.index.counter.NodeCounterEditorProvider;
 import org.apache.jackrabbit.oak.plugins.index.nodetype.NodeTypeIndexProvider;
 import org.apache.jackrabbit.oak.plugins.index.property.OrderedPropertyIndexEditorProvider;
-import org.apache.jackrabbit.oak.plugins.index.property.OrderedPropertyIndexProvider;
 import org.apache.jackrabbit.oak.plugins.index.property.PropertyIndexEditorProvider;
 import org.apache.jackrabbit.oak.plugins.index.property.PropertyIndexProvider;
 import org.apache.jackrabbit.oak.plugins.index.reference.ReferenceEditorProvider;
@@ -62,6 +61,7 @@ import org.apache.jackrabbit.oak.spi.lifecycle.RepositoryInitializer;
 import org.apache.jackrabbit.oak.spi.mount.MountInfoProvider;
 import org.apache.jackrabbit.oak.spi.query.QueryIndexProvider;
 import org.apache.jackrabbit.oak.spi.security.SecurityProvider;
+import org.apache.jackrabbit.oak.spi.state.Clusterable;
 import org.apache.jackrabbit.oak.spi.state.NodeStore;
 import org.apache.jackrabbit.oak.spi.whiteboard.Whiteboard;
 
@@ -107,6 +107,8 @@ public class Jcr {
     private Repository repository;
     private MountInfoProvider mountInfoProvider = MountInfoProvider.DEFAULT;
 
+    private Clusterable clusterable;
+
     public Jcr(Oak oak) {
         this.oak = oak;
 
@@ -127,9 +129,7 @@ public class Jcr {
 
         with(new PropertyIndexEditorProvider().with(mountInfoProvider));
         with(new NodeCounterEditorProvider());
-
         with(new PropertyIndexProvider().with(mountInfoProvider));
-        with(new OrderedPropertyIndexProvider());
         with(new NodeTypeIndexProvider());
 
         with(new OrderedPropertyIndexEditorProvider());
@@ -143,6 +143,13 @@ public class Jcr {
         this(new Oak(store));
     }
 
+    @Nonnull
+    public Jcr with(@Nonnull Clusterable c) {
+        ensureRepositoryIsNotCreated();
+        this.clusterable = checkNotNull(c);
+        return this;
+    }
+    
     @Nonnull
     public final Jcr with(@Nonnull RepositoryInitializer initializer) {
         ensureRepositoryIsNotCreated();
@@ -350,7 +357,10 @@ public class Jcr {
         if (defaultWorkspaceName != null) {
             oak.with(defaultWorkspaceName);
         }
-
+        
+        if (clusterable != null) {
+            oak.with(clusterable);
+        }
     }
 
     @Nonnull

@@ -16,7 +16,6 @@
  */
 package org.apache.jackrabbit.oak.plugins.segment.file;
 
-import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkNotNull;
 import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.collect.Lists.newArrayList;
@@ -69,6 +68,7 @@ import org.apache.jackrabbit.oak.plugins.segment.Compactor;
 import org.apache.jackrabbit.oak.plugins.segment.PersistedCompactionMap;
 import org.apache.jackrabbit.oak.plugins.segment.RecordId;
 import org.apache.jackrabbit.oak.plugins.segment.Segment;
+import org.apache.jackrabbit.oak.plugins.segment.SegmentGraph.SegmentGraphVisitor;
 import org.apache.jackrabbit.oak.plugins.segment.SegmentId;
 import org.apache.jackrabbit.oak.plugins.segment.SegmentNodeState;
 import org.apache.jackrabbit.oak.plugins.segment.SegmentNodeStore;
@@ -82,6 +82,7 @@ import org.apache.jackrabbit.oak.spi.blob.BlobStore;
 import org.apache.jackrabbit.oak.spi.gc.GCMonitor;
 import org.apache.jackrabbit.oak.spi.state.NodeBuilder;
 import org.apache.jackrabbit.oak.spi.state.NodeState;
+import org.apache.jackrabbit.oak.stats.StatisticsProvider;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -209,6 +210,8 @@ public class FileStore implements SegmentStore {
 
     private final ReadWriteLock fileStoreLock = new ReentrantReadWriteLock();
 
+    private final FileStoreStats stats;
+
     /**
      * Create a new instance of a {@link Builder} for a file store.
      * @param directory  directory where the tar files are stored
@@ -230,6 +233,7 @@ public class FileStore implements SegmentStore {
         private int cacheSize;   // 0 -> DEFAULT_MEMORY_CACHE_SIZE
         private boolean memoryMapping;
         private final LoggingGCMonitor gcMonitor = new LoggingGCMonitor();
+        private StatisticsProvider statsProvider = StatisticsProvider.NOOP;
 
         private Builder(File directory) {
             this.directory = directory;
@@ -312,6 +316,19 @@ public class FileStore implements SegmentStore {
         }
 
         /**
+         * {@link StatisticsProvider} for collecting statistics related to FileStore
+         * @param statisticsProvider
+         * @return this instance
+         */
+        @Nonnull
+        public Builder withStatisticsProvider(@Nonnull StatisticsProvider statisticsProvider) {
+            this.statsProvider = checkNotNull(statisticsProvider);
+            return this;
+        }
+
+        /**
+
+        /**
          * Create a new {@link FileStore} instance with the settings specified in this
          * builder. If none of the {@code with} methods have been called before calling
          * this method, a file store with the following default settings is returned:
@@ -322,6 +339,7 @@ public class FileStore implements SegmentStore {
          * <li>cache size: 256MB</li>
          * <li>memory mapping: on for 64 bit JVMs off otherwise</li>
          * <li>whiteboard: none. No {@link GCMonitor} tracking</li>
+         * <li>statsProvider: StatisticsProvider.NOOP</li>
          * </ul>
          *
          * @return a new file store instance
@@ -330,14 +348,15 @@ public class FileStore implements SegmentStore {
         @Nonnull
         public FileStore create() throws IOException {
             return new FileStore(
-                    blobStore, directory, root, maxFileSize, cacheSize, memoryMapping, gcMonitor, false);
+                    blobStore, directory, root, maxFileSize, cacheSize, memoryMapping, gcMonitor, statsProvider, false);
         }
     }
 
     @Deprecated
     public FileStore(BlobStore blobStore, File directory, int maxFileSizeMB, boolean memoryMapping)
             throws IOException {
-        this(blobStore, directory, EMPTY_NODE, maxFileSizeMB, 0, memoryMapping, GCMonitor.EMPTY, false);
+        this(blobStore, directory, EMPTY_NODE, maxFileSizeMB, 0, memoryMapping,
+                GCMonitor.EMPTY, StatisticsProvider.NOOP, false);
     }
 
     @Deprecated
@@ -355,24 +374,28 @@ public class FileStore implements SegmentStore {
     @Deprecated
     public FileStore(File directory, int maxFileSizeMB, int cacheSizeMB,
             boolean memoryMapping) throws IOException {
-        this(null, directory, EMPTY_NODE, maxFileSizeMB, cacheSizeMB, memoryMapping, GCMonitor.EMPTY, false);
+        this(null, directory, EMPTY_NODE, maxFileSizeMB, cacheSizeMB, memoryMapping,
+                GCMonitor.EMPTY, StatisticsProvider.NOOP, false);
     }
 
     @Deprecated
     FileStore(File directory, NodeState initial, int maxFileSize) throws IOException {
-        this(null, directory, initial, maxFileSize, -1, MEMORY_MAPPING_DEFAULT, GCMonitor.EMPTY, false);
+        this(null, directory, initial, maxFileSize, -1, MEMORY_MAPPING_DEFAULT,
+                GCMonitor.EMPTY, StatisticsProvider.NOOP, false);
     }
 
     @Deprecated
     public FileStore(
             BlobStore blobStore, final File directory, NodeState initial, int maxFileSizeMB,
             int cacheSizeMB, boolean memoryMapping) throws IOException {
-        this(blobStore, directory, initial, maxFileSizeMB, cacheSizeMB, memoryMapping, GCMonitor.EMPTY, false);
+        this(blobStore, directory, initial, maxFileSizeMB, cacheSizeMB, memoryMapping,
+                GCMonitor.EMPTY, StatisticsProvider.NOOP,false);
     }
 
     private FileStore(
             BlobStore blobStore, final File directory, NodeState initial, int maxFileSizeMB,
-            int cacheSizeMB, boolean memoryMapping, GCMonitor gcMonitor, boolean readonly)
+            int cacheSizeMB, boolean memoryMapping, GCMonitor gcMonitor, StatisticsProvider statsProvider,
+            boolean  readonly)
             throws IOException {
 
         if (readonly) {
@@ -419,6 +442,10 @@ public class FileStore implements SegmentStore {
             }
         }
 
+        long initialSize = size();
+        this.approximateSize = new AtomicLong(initialSize);
+        this.stats = new FileStoreStats(statsProvider, this, initialSize);
+
         if (!readonly) {
             if (indices.length > 0) {
                 this.writeNumber = indices[indices.length - 1] + 1;
@@ -427,7 +454,7 @@ public class FileStore implements SegmentStore {
             }
             this.writeFile = new File(directory, String.format(
                     FILE_NAME_FORMAT, writeNumber, "a"));
-            this.writer = new TarWriter(writeFile);
+            this.writer = new TarWriter(writeFile, stats);
         }
 
         RecordId id = null;
@@ -495,7 +522,11 @@ public class FileStore implements SegmentStore {
                     new Runnable() {
                         @Override
                         public void run() {
-                            maybeCompact(true);
+                            try {
+                                maybeCompact(true);
+                            } catch (IOException e) {
+                                log.error("Error running compaction", e);
+                            }
                         }
                     });
 
@@ -508,13 +539,10 @@ public class FileStore implements SegmentStore {
                 }
 
             });
-
-            approximateSize = new AtomicLong(size());
         } else {
             flushThread = null;
             compactionThread = null;
             diskSpaceThread = null;
-            approximateSize = null;
         }
 
         sufficientDiskSpace = new AtomicBoolean(true);
@@ -527,7 +555,7 @@ public class FileStore implements SegmentStore {
         }
     }
 
-    public boolean maybeCompact(boolean cleanup) {
+    public boolean maybeCompact(boolean cleanup) throws IOException {
         gcMonitor.info("TarMK GC #{}: started", gcCount.incrementAndGet());
 
         Runtime runtime = Runtime.getRuntime();
@@ -561,7 +589,12 @@ public class FileStore implements SegmentStore {
 
         byte gainThreshold = compactionStrategy.getGainThreshold();
         boolean runCompaction = true;
-        if (gainThreshold > 0) {
+        if (gainThreshold <= 0) {
+            gcMonitor.info("TarMK GC #{}: estimation skipped because gain threshold value ({} <= 0)", gcCount,
+                gainThreshold);
+        } else if (compactionStrategy.isPaused()) {
+            gcMonitor.info("TarMK GC #{}: estimation skipped because compaction is paused", gcCount);
+        } else {
             gcMonitor.info("TarMK GC #{}: estimation started", gcCount);
             Supplier<Boolean> shutdown = newShutdownSignal();
             CompactionGainEstimate estimate = estimateCompactionGain(shutdown);
@@ -594,9 +627,6 @@ public class FileStore implements SegmentStore {
                             estimate.getReachableSize(), estimate.getTotalSize());
                 }
             }
-        } else {
-            gcMonitor.info("TarMK GC #{}: estimation skipped due to gain threshold value ({}). Running compaction",
-                    gcCount, gainThreshold);
         }
 
         if (runCompaction) {
@@ -687,11 +717,20 @@ public class FileStore implements SegmentStore {
     public long size() {
         fileStoreLock.readLock().lock();
         try {
-            long size = writeFile.length();
+            long size = writeFile != null ? writeFile.length() : 0;
             for (TarReader reader : readers) {
                 size += reader.size();
             }
             return size;
+        } finally {
+            fileStoreLock.readLock().unlock();
+        }
+    }
+
+    public int readerCount(){
+        fileStoreLock.readLock().lock();
+        try {
+            return readers.size();
         } finally {
             fileStoreLock.readLock().unlock();
         }
@@ -738,6 +777,10 @@ public class FileStore implements SegmentStore {
             fileStoreLock.readLock().unlock();
         }
         return estimate;
+    }
+
+    public FileStoreStats getStats() {
+        return stats;
     }
 
     public void flush() throws IOException {
@@ -879,6 +922,7 @@ public class FileStore implements SegmentStore {
         cm.remove(cleanedIds);
         long finalSize = size();
         approximateSize.set(finalSize);
+        stats.reclaimed(initialSize - finalSize);
         gcMonitor.cleaned(initialSize - finalSize, finalSize);
         gcMonitor.info("TarMK GC #{}: cleanup completed in {} ({} ms). Post cleanup size is {} ({} bytes)" +
                 " and space reclaimed {} ({} bytes). Compaction map weight/depth is {}/{} ({} bytes/{}).",
@@ -959,8 +1003,8 @@ public class FileStore implements SegmentStore {
      * are fully kept (they are only removed in cleanup, if there is no
      * reference to them).
      */
-    public void compact() {
-        checkArgument(!compactionStrategy.equals(NO_COMPACTION),
+    public void compact() throws IOException {
+        checkState(!compactionStrategy.equals(NO_COMPACTION),
                 "You must set a compactionStrategy before calling compact");
         gcMonitor.info("TarMK GC #{}: compaction started, strategy={}", gcCount, compactionStrategy);
         Stopwatch watch = Stopwatch.createStarted();
@@ -1221,7 +1265,7 @@ public class FileStore implements SegmentStore {
     }
 
     @Override
-    public void writeSegment(SegmentId id, byte[] data, int offset, int length) {
+    public void writeSegment(SegmentId id, byte[] data, int offset, int length) throws IOException {
         fileStoreLock.writeLock().lock();
         try {
             long size = writer.writeEntry(
@@ -1232,8 +1276,6 @@ public class FileStore implements SegmentStore {
                 newWriter();
             }
             approximateSize.addAndGet(TarWriter.BLOCK_SIZE + length + TarWriter.getPaddingSize(length));
-        } catch (IOException e) {
-            throw new RuntimeException(e);
         } finally {
             fileStoreLock.writeLock().unlock();
         }
@@ -1253,7 +1295,7 @@ public class FileStore implements SegmentStore {
             writeFile = new File(
                     directory,
                     String.format(FILE_NAME_FORMAT, writeNumber, "a"));
-            writer = new TarWriter(writeFile);
+            writer = new TarWriter(writeFile, stats);
         }
     }
 
@@ -1350,13 +1392,13 @@ public class FileStore implements SegmentStore {
 
         public ReadOnlyStore(File directory) throws IOException {
             super(null, directory, EMPTY_NODE, -1, 0, MEMORY_MAPPING_DEFAULT,
-                    GCMonitor.EMPTY, true);
+                    GCMonitor.EMPTY, StatisticsProvider.NOOP, true);
         }
 
         public ReadOnlyStore(File directory, BlobStore blobStore)
                 throws IOException {
             super(blobStore, directory, EMPTY_NODE, -1, 0,
-                    MEMORY_MAPPING_DEFAULT, GCMonitor.EMPTY, true);
+                    MEMORY_MAPPING_DEFAULT, GCMonitor.EMPTY, StatisticsProvider.NOOP, true);
         }
 
         /**
@@ -1370,15 +1412,16 @@ public class FileStore implements SegmentStore {
 
         /**
          * Build the graph of segments reachable from an initial set of segments
-         * @param referencedIds  the initial set of segments
+         * @param roots     the initial set of segments
+         * @param visitor   visitor receiving call back while following the segment graph
          * @throws IOException
          */
-        public Map<UUID, Set<UUID>> getSegmentGraph(Set<UUID> referencedIds) throws IOException {
-            Map<UUID, Set<UUID>> graph = newHashMap();
+        public void traverseSegmentGraph(
+            @Nonnull Set<UUID> roots,
+            @Nonnull SegmentGraphVisitor visitor) throws IOException {
             for (TarReader reader : super.readers) {
-                graph.putAll(reader.getReferenceGraph(referencedIds));
+                reader.traverseSegmentGraph(checkNotNull(roots), checkNotNull(visitor));
             }
-            return graph;
         }
 
         @Override
@@ -1417,7 +1460,6 @@ public class FileStore implements SegmentStore {
         public boolean maybeCompact(boolean cleanup) {
             throw new UnsupportedOperationException("Read Only Store");
         }
-
     }
 
     private class SetHead implements Callable<Boolean> {

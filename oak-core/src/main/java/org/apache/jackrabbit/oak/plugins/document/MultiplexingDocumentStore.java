@@ -316,6 +316,18 @@ public class MultiplexingDocumentStore implements DocumentStore {
         return findOwnerStore(update, collection, OnFailure.FAIL_FAST)
                 .createOrUpdate(collection, update);
     }
+    
+    @Override
+    public <T extends Document> List<T> createOrUpdate(Collection<T> collection, List<UpdateOp> updateOps) {
+        
+        List<T> results = Lists.newArrayList();
+        
+        for ( UpdateOp update : updateOps ) {
+          results.add(createOrUpdate(collection, update));  
+        }
+        
+        return results;
+    }
 
     @Override
     public <T extends Document> T findAndUpdate(Collection<T> collection, UpdateOp update) {

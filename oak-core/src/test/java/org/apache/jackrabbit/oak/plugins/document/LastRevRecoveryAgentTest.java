@@ -99,6 +99,7 @@ public class LastRevRecoveryAgentTest {
                 .clock(clock)
                 .setDocumentStore(store)
                 .setLeaseCheck(false)
+                .setClusterId(1)
                 .getNodeStore();
         c1Id = ds1.getClusterId();
 
@@ -107,6 +108,7 @@ public class LastRevRecoveryAgentTest {
                 .clock(clock)
                 .setDocumentStore(store)
                 .setLeaseCheck(false)
+                .setClusterId(2)
                 .getNodeStore();
         c2Id = ds2.getClusterId();
     }
@@ -137,7 +139,7 @@ public class LastRevRecoveryAgentTest {
         b2.child("x").child("y").child("z").setProperty("foo", "bar");
         ds2.merge(b2, EmptyHook.INSTANCE, CommitInfo.EMPTY);
 
-        Revision zlastRev2 = ds2.getHeadRevision();
+        Revision zlastRev2 = ds2.getHeadRevision().getRevision(ds2.getClusterId());
 
         long leaseTime = ds1.getClusterInfo().getLeaseTime();
         ds1.runBackgroundOperations();

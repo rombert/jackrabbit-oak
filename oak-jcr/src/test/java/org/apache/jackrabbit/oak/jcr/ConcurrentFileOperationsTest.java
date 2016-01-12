@@ -33,6 +33,7 @@ import javax.jcr.Session;
 
 import org.apache.jackrabbit.commons.JcrUtils;
 import org.apache.jackrabbit.oak.commons.PathUtils;
+import org.apache.jackrabbit.oak.fixture.NodeStoreFixture;
 import org.apache.jackrabbit.oak.jcr.util.TreeDump;
 import org.junit.Before;
 import org.junit.Test;

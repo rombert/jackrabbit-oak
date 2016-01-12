@@ -68,6 +68,7 @@ import org.apache.jackrabbit.oak.osgi.OsgiWhiteboard;
 import org.apache.jackrabbit.oak.plugins.blob.BlobGC;
 import org.apache.jackrabbit.oak.plugins.blob.BlobGCMBean;
 import org.apache.jackrabbit.oak.plugins.blob.BlobGarbageCollector;
+import org.apache.jackrabbit.oak.plugins.blob.BlobStoreStats;
 import org.apache.jackrabbit.oak.plugins.blob.SharedDataStore;
 import org.apache.jackrabbit.oak.plugins.blob.datastore.SharedDataStoreUtils;
 import org.apache.jackrabbit.oak.plugins.document.util.MongoConnection;
@@ -77,6 +78,8 @@ import org.apache.jackrabbit.oak.spi.blob.BlobStoreWrapper;
 import org.apache.jackrabbit.oak.spi.blob.GarbageCollectableBlobStore;
 import org.apache.jackrabbit.oak.spi.mount.Mount;
 import org.apache.jackrabbit.oak.spi.mount.MountInfoProvider;
+import org.apache.jackrabbit.oak.spi.blob.stats.BlobStoreStatsMBean;
+import org.apache.jackrabbit.oak.spi.state.Clusterable;
 import org.apache.jackrabbit.oak.spi.state.NodeStore;
 import org.apache.jackrabbit.oak.spi.state.RevisionGC;
 import org.apache.jackrabbit.oak.spi.state.RevisionGCMBean;
@@ -84,6 +87,7 @@ import org.apache.jackrabbit.oak.spi.whiteboard.Registration;
 import org.apache.jackrabbit.oak.spi.whiteboard.Whiteboard;
 import org.apache.jackrabbit.oak.spi.whiteboard.WhiteboardExecutor;
 import org.apache.jackrabbit.oak.spi.whiteboard.WhiteboardUtils;
+import org.apache.jackrabbit.oak.stats.StatisticsProvider;
 import org.osgi.framework.Bundle;
 import org.osgi.framework.BundleException;
 import org.osgi.framework.Constants;
@@ -328,6 +332,9 @@ public class DocumentNodeStoreService {
     public static final String PROP_DS_TYPE = "documentStoreType";
     private DocumentStoreType documentStoreType;
 
+    @Reference
+    private StatisticsProvider statisticsProvider;
+
     private boolean customBlobStore;
 
     @Activate
@@ -377,6 +384,7 @@ public class DocumentNodeStoreService {
 
         DocumentMK.Builder mkBuilder =
                 new DocumentMK.Builder().
+                setStatisticsProvider(statisticsProvider).
                 memoryCacheSize(cacheSize * MB).
                 memoryCacheDistribution(
                         nodeCachePercentage, 
@@ -495,7 +503,7 @@ public class DocumentNodeStoreService {
             }
         }
 
-        registerJMXBeans(mk.getNodeStore());
+        registerJMXBeans(mk.getNodeStore(), mkBuilder);
         registerLastRevRecoveryJob(mk.getNodeStore());
         registerJournalGC(mk.getNodeStore());
 
@@ -531,7 +539,13 @@ public class DocumentNodeStoreService {
         // OAK-2844: in order to allow DocumentDiscoveryLiteService to directly
         // require a service DocumentNodeStore (instead of having to do an 'instanceof')
         // the registration is now done for both NodeStore and DocumentNodeStore here.
-        reg = context.getBundleContext().registerService(new String[]{NodeStore.class.getName(), DocumentNodeStore.class.getName()}, store, props);
+        reg = context.getBundleContext().registerService(
+            new String[]{
+                 NodeStore.class.getName(), 
+                 DocumentNodeStore.class.getName(), 
+                 Clusterable.class.getName()
+            }, 
+            store, props);
     }
 
     @Deactivate
@@ -606,7 +620,8 @@ public class DocumentNodeStoreService {
         }
     }
 
-    private void registerJMXBeans(final DocumentNodeStore store) throws IOException {
+    private void registerJMXBeans(final DocumentNodeStore store, DocumentMK.Builder mkBuilder) throws
+            IOException {
         registrations.add(
                 registerMBean(whiteboard,
                         CacheStatsMBean.class,
@@ -660,6 +675,16 @@ public class DocumentNodeStoreService {
                         "Document node store management")
         );
 
+        if (mkBuilder.getBlobStoreCacheStats() != null) {
+            registrations.add(
+                    registerMBean(whiteboard,
+                            CacheStatsMBean.class,
+                            mkBuilder.getBlobStoreCacheStats(),
+                            CacheStatsMBean.TYPE,
+                            mkBuilder.getBlobStoreCacheStats().getName())
+            );
+        }
+
         final long versionGcMaxAgeInSecs = toLong(prop(PROP_VER_GC_MAX_AGE), DEFAULT_VER_GC_MAX_AGE);
         final long blobGcMaxAgeInSecs = toLong(prop(PROP_BLOB_GC_MAX_AGE), DEFAULT_BLOB_GC_MAX_AGE);
 
@@ -683,7 +708,14 @@ public class DocumentNodeStoreService {
         registrations.add(registerMBean(whiteboard, RevisionGCMBean.class, revisionGC,
                 RevisionGCMBean.TYPE, "Document node store revision garbage collection"));
 
-        //TODO Register JMX bean for Off Heap Cache stats
+        BlobStoreStats blobStoreStats = mkBuilder.getBlobStoreStats();
+        if (!customBlobStore && blobStoreStats != null) {
+            registrations.add(registerMBean(whiteboard,
+                    BlobStoreStatsMBean.class,
+                    blobStoreStats,
+                    BlobStoreStatsMBean.TYPE,
+                    ds.getClass().getSimpleName()));
+        }
     }
 
     private void registerLastRevRecoveryJob(final DocumentNodeStore nodeStore) {
