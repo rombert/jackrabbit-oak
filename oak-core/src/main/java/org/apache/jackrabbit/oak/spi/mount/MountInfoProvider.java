@@ -45,6 +45,10 @@ public interface MountInfoProvider {
         public boolean hasNonDefaultMounts() {
             return false;
         }
+        
+        public Collection<Mount> getMountsPlacedUnder(String path) {
+            return Collections.emptySet();
+        };
     };
 
     /**
@@ -75,4 +79,12 @@ public interface MountInfoProvider {
      * Return true if there are explicit mounts configured
      */
     boolean hasNonDefaultMounts();
+    
+    /**
+     * Returns all mounts placed under the specified path
+     * 
+     * @param path the path under which mounts are to be found
+     * @return a collection of mounts, possibly empty
+     */
+    Collection<Mount> getMountsPlacedUnder(String path);    
 }

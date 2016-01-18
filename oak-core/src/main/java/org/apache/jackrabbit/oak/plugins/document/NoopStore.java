@@ -68,6 +68,11 @@ class NoopStore implements DocumentStore {
     public <T extends Document> T createOrUpdate(Collection<T> collection, UpdateOp update) {
         throw new UnsupportedOperationException();
     }
+    
+    @Override
+    public <T extends Document> List<T> createOrUpdate(Collection<T> collection, List<UpdateOp> updateOps) {
+        throw new UnsupportedOperationException();
+    }
 
     @Override
     public <T extends Document> T findAndUpdate(Collection<T> collection, UpdateOp update) {

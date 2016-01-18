@@ -164,14 +164,6 @@ public class ClusterTest {
     }
 
     @Test
-    public void clusterNodeId() {
-        DocumentMK mk1 = createMK(0);
-        DocumentMK mk2 = createMK(0);
-        assertEquals(1, mk1.getClusterInfo().getId());
-        assertEquals(2, mk2.getClusterInfo().getId());
-    }
-
-    @Test
     public void clusterBranchInVisibility() throws InterruptedException {
         DocumentMK mk1 = createMK(1);
         mk1.commit("/", "+\"regular\": {}", null, null);
@@ -224,9 +216,9 @@ public class ClusterTest {
 
         mk3.runBackgroundOperations(); // pick up changes from mk2
 
-        DocumentNodeState base = ns3.getNode("/", Revision.fromString(base3));
+        DocumentNodeState base = ns3.getNode("/", RevisionVector.fromString(base3));
         assertNotNull(base);
-        NodeState branchHead = ns3.getNode("/", Revision.fromString(b3));
+        NodeState branchHead = ns3.getNode("/", RevisionVector.fromString(b3));
         assertNotNull(branchHead);
         TrackingDiff diff = new TrackingDiff();
         branchHead.compareAgainstBaseState(base, diff);

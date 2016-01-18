@@ -41,6 +41,7 @@ import org.junit.rules.TestRule;
 
 import static java.util.Collections.synchronizedList;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
@@ -327,10 +328,10 @@ public class JournalTest extends AbstractJournalTest {
     }
     
     private void doLastRevRecoveryJournalTest(boolean testConcurrency) throws Exception {
-        DocumentMK mk1 = createMK(0 /*clusterId via clusterNodes collection*/, 0);
+        DocumentMK mk1 = createMK(1, 0);
         DocumentNodeStore ds1 = mk1.getNodeStore();
         int c1Id = ds1.getClusterId();
-        DocumentMK mk2 = createMK(0 /*clusterId via clusterNodes collection*/, 0);
+        DocumentMK mk2 = createMK(2, 0);
         DocumentNodeStore ds2 = mk2.getNodeStore();
         final int c2Id = ds2.getClusterId();
         
@@ -371,7 +372,7 @@ public class JournalTest extends AbstractJournalTest {
         Revision zlastRev2 = z1.getLastRev().get(c2Id);
         // /x/y/z is a new node and does not have a _lastRev
         assertNull(zlastRev2);
-        Revision head2 = ds2.getHeadRevision();
+        Revision head2 = ds2.getHeadRevision().getRevision(ds2.getClusterId());
 
         //lastRev should not be updated for C #2
         assertNull(y1.getLastRev().get(c2Id));
@@ -458,7 +459,8 @@ public class JournalTest extends AbstractJournalTest {
         NodeBuilder b2 = ns2.getRoot().builder();
         b2.child("bar");
         ns2.merge(b2, EmptyHook.INSTANCE, CommitInfo.EMPTY);
-        Revision h2 = ns2.getHeadRevision();
+        Revision h2 = ns2.getHeadRevision().getRevision(ns2.getClusterId());
+        assertNotNull(h2);
 
         ns2.runBackgroundReadOperations();
 

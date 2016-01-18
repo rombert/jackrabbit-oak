@@ -72,6 +72,18 @@ public class SimpleMountInfoProvider implements MountInfoProvider {
         return hasMounts;
     }
 
+
+    @Override
+    public Collection<Mount> getMountsPlacedUnder(String path) {
+        Collection<Mount> mounts = Lists.newArrayList();
+        for ( MountInfo mount : mountInfos ) {
+            if ( mount.isUnder(path) ) {
+                mounts.add(mount.getMount());
+            }
+        }
+        return mounts;
+    }
+
     //~----------------------------------------< builder >
 
     public static Builder newBuilder(){

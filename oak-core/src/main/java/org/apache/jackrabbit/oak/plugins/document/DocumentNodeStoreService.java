@@ -33,6 +33,7 @@ import static org.apache.jackrabbit.oak.spi.whiteboard.WhiteboardUtils.registerM
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Dictionary;
 import java.util.HashMap;
 import java.util.Hashtable;
@@ -67,6 +68,7 @@ import org.apache.jackrabbit.oak.osgi.OsgiWhiteboard;
 import org.apache.jackrabbit.oak.plugins.blob.BlobGC;
 import org.apache.jackrabbit.oak.plugins.blob.BlobGCMBean;
 import org.apache.jackrabbit.oak.plugins.blob.BlobGarbageCollector;
+import org.apache.jackrabbit.oak.plugins.blob.BlobStoreStats;
 import org.apache.jackrabbit.oak.plugins.blob.SharedDataStore;
 import org.apache.jackrabbit.oak.plugins.blob.datastore.SharedDataStoreUtils;
 import org.apache.jackrabbit.oak.plugins.document.util.MongoConnection;
@@ -74,6 +76,10 @@ import org.apache.jackrabbit.oak.plugins.identifier.ClusterRepositoryInfo;
 import org.apache.jackrabbit.oak.spi.blob.BlobStore;
 import org.apache.jackrabbit.oak.spi.blob.BlobStoreWrapper;
 import org.apache.jackrabbit.oak.spi.blob.GarbageCollectableBlobStore;
+import org.apache.jackrabbit.oak.spi.mount.Mount;
+import org.apache.jackrabbit.oak.spi.mount.MountInfoProvider;
+import org.apache.jackrabbit.oak.spi.blob.stats.BlobStoreStatsMBean;
+import org.apache.jackrabbit.oak.spi.state.Clusterable;
 import org.apache.jackrabbit.oak.spi.state.NodeStore;
 import org.apache.jackrabbit.oak.spi.state.RevisionGC;
 import org.apache.jackrabbit.oak.spi.state.RevisionGCMBean;
@@ -81,6 +87,7 @@ import org.apache.jackrabbit.oak.spi.whiteboard.Registration;
 import org.apache.jackrabbit.oak.spi.whiteboard.Whiteboard;
 import org.apache.jackrabbit.oak.spi.whiteboard.WhiteboardExecutor;
 import org.apache.jackrabbit.oak.spi.whiteboard.WhiteboardUtils;
+import org.apache.jackrabbit.oak.stats.StatisticsProvider;
 import org.osgi.framework.Bundle;
 import org.osgi.framework.BundleException;
 import org.osgi.framework.Constants;
@@ -225,7 +232,8 @@ public class DocumentNodeStoreService {
     
     @Property(value = "", 
             label="Mounts (optional)",
-            description="Mounted stores, in the '/path:collection_name' format. Only supported for MongoDB "
+            description="Mounted stores, in the 'mount_name:collection' format. The mount_name must refer to a "
+                    + "mount exposed by the MountInfoProviderService. Only supported for MongoDB "
                     + "at the moment. Collections will be created in the MongoDB instance configured for "
                     + "this DocumentNodeStore instance.", 
             unbounded = PropertyUnbounded.ARRAY)
@@ -265,6 +273,9 @@ public class DocumentNodeStoreService {
             target = "(datasource.name=oak)"
     )
     private volatile DataSource blobDataSource;
+    
+    @Reference
+    private MountInfoProvider mountInfoProvider;
 
     private DocumentMK mk;
     private ObserverTracker observerTracker;
@@ -321,6 +332,9 @@ public class DocumentNodeStoreService {
     public static final String PROP_DS_TYPE = "documentStoreType";
     private DocumentStoreType documentStoreType;
 
+    @Reference
+    private StatisticsProvider statisticsProvider;
+
     private boolean customBlobStore;
 
     @Activate
@@ -370,6 +384,7 @@ public class DocumentNodeStoreService {
 
         DocumentMK.Builder mkBuilder =
                 new DocumentMK.Builder().
+                setStatisticsProvider(statisticsProvider).
                 memoryCacheSize(cacheSize * MB).
                 memoryCacheDistribution(
                         nodeCachePercentage, 
@@ -434,15 +449,15 @@ public class DocumentNodeStoreService {
             for ( String rawMount : rawMounts ) {
                 List<String> split = Splitter.on(':').splitToList(rawMount);
                 Preconditions.checkArgument(split.size() == 2, "Invalid mount specification: '%s'", rawMount);
-                String path = split.get(0).trim();
-                String collection = split.get(1).trim();
+                String mountName = split.get(0).trim();
+                String collectionName = split.get(1).trim();
                 
-                Preconditions.checkArgument(!path.isEmpty(), "path is empty for mount specification '%s'", rawMount);
-                Preconditions.checkArgument(!collection.isEmpty(), "collection is empty for mount specification '%s'", rawMount);
-                Preconditions.checkArgument(path.length() > 1 && path.charAt(0) == '/', "path '%s' must be absolute and different from the root path", path);
+                Preconditions.checkArgument(!mountName.isEmpty(), "mountName is empty for mount specification '%s'", rawMount);
+                Preconditions.checkNotNull(mountInfoProvider.getMountByName(mountName), "mount with name '%s' not found in custom mount list '%s'", 
+                        mountName, mountInfoProvider.getNonDefaultMounts());
+                Preconditions.checkArgument(!collectionName.isEmpty(), "collectionName is empty for mount specification '%s'", rawMount);
 
-                mounts.put(path, collection);
-                
+                mounts.put(mountName, collectionName);
             }
 
             if (log.isInfoEnabled()) {
@@ -451,6 +466,7 @@ public class DocumentNodeStoreService {
                 log.info("Starting DocumentNodeStore with host={}, db={}, cache size (MB)={}, persistentCache={}, " +
                                 "blobCacheSize (MB)={}, maxReplicationLagInSecs={}",
                         mongoURI.getHosts(), db, cacheSize, persistentCache, blobCacheSize, maxReplicationLagInSecs);
+                
                 if ( mounts.size() > 0 ) {
                     log.info("Configuring mounts: {}", mounts);
                 }
@@ -461,6 +477,7 @@ public class DocumentNodeStoreService {
             for ( Map.Entry<String, String> entry : mounts.entrySet() ) {
                 mkBuilder.addMongoDbMount(entry.getKey(), uri, db, entry.getValue());
             }
+            mkBuilder.setMountInfoProvider(mountInfoProvider);
             mkBuilder.setMongoDB(uri, db, blobCacheSize);
 
             log.info("Connected to database '{}'", db);
@@ -486,7 +503,7 @@ public class DocumentNodeStoreService {
             }
         }
 
-        registerJMXBeans(mk.getNodeStore());
+        registerJMXBeans(mk.getNodeStore(), mkBuilder);
         registerLastRevRecoveryJob(mk.getNodeStore());
         registerJournalGC(mk.getNodeStore());
 
@@ -522,7 +539,13 @@ public class DocumentNodeStoreService {
         // OAK-2844: in order to allow DocumentDiscoveryLiteService to directly
         // require a service DocumentNodeStore (instead of having to do an 'instanceof')
         // the registration is now done for both NodeStore and DocumentNodeStore here.
-        reg = context.getBundleContext().registerService(new String[]{NodeStore.class.getName(), DocumentNodeStore.class.getName()}, store, props);
+        reg = context.getBundleContext().registerService(
+            new String[]{
+                 NodeStore.class.getName(), 
+                 DocumentNodeStore.class.getName(), 
+                 Clusterable.class.getName()
+            }, 
+            store, props);
     }
 
     @Deactivate
@@ -597,7 +620,8 @@ public class DocumentNodeStoreService {
         }
     }
 
-    private void registerJMXBeans(final DocumentNodeStore store) throws IOException {
+    private void registerJMXBeans(final DocumentNodeStore store, DocumentMK.Builder mkBuilder) throws
+            IOException {
         registrations.add(
                 registerMBean(whiteboard,
                         CacheStatsMBean.class,
@@ -651,6 +675,16 @@ public class DocumentNodeStoreService {
                         "Document node store management")
         );
 
+        if (mkBuilder.getBlobStoreCacheStats() != null) {
+            registrations.add(
+                    registerMBean(whiteboard,
+                            CacheStatsMBean.class,
+                            mkBuilder.getBlobStoreCacheStats(),
+                            CacheStatsMBean.TYPE,
+                            mkBuilder.getBlobStoreCacheStats().getName())
+            );
+        }
+
         final long versionGcMaxAgeInSecs = toLong(prop(PROP_VER_GC_MAX_AGE), DEFAULT_VER_GC_MAX_AGE);
         final long blobGcMaxAgeInSecs = toLong(prop(PROP_BLOB_GC_MAX_AGE), DEFAULT_BLOB_GC_MAX_AGE);
 
@@ -674,7 +708,14 @@ public class DocumentNodeStoreService {
         registrations.add(registerMBean(whiteboard, RevisionGCMBean.class, revisionGC,
                 RevisionGCMBean.TYPE, "Document node store revision garbage collection"));
 
-        //TODO Register JMX bean for Off Heap Cache stats
+        BlobStoreStats blobStoreStats = mkBuilder.getBlobStoreStats();
+        if (!customBlobStore && blobStoreStats != null) {
+            registrations.add(registerMBean(whiteboard,
+                    BlobStoreStatsMBean.class,
+                    blobStoreStats,
+                    BlobStoreStatsMBean.TYPE,
+                    ds.getClass().getSimpleName()));
+        }
     }
 
     private void registerLastRevRecoveryJob(final DocumentNodeStore nodeStore) {

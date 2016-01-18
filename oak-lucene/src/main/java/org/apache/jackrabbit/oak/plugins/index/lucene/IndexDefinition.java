@@ -79,28 +79,13 @@ import static org.apache.jackrabbit.oak.commons.PathUtils.getParentPath;
 import static org.apache.jackrabbit.oak.plugins.index.IndexConstants.DECLARING_NODE_TYPES;
 import static org.apache.jackrabbit.oak.plugins.index.IndexConstants.ENTRY_COUNT_PROPERTY_NAME;
 import static org.apache.jackrabbit.oak.plugins.index.IndexConstants.REINDEX_COUNT;
-import static org.apache.jackrabbit.oak.plugins.index.lucene.LuceneIndexConstants.ACTIVE_DELETE;
-import static org.apache.jackrabbit.oak.plugins.index.lucene.LuceneIndexConstants.BLOB_SIZE;
-import static org.apache.jackrabbit.oak.plugins.index.lucene.LuceneIndexConstants.COMPAT_MODE;
-import static org.apache.jackrabbit.oak.plugins.index.lucene.LuceneIndexConstants.EVALUATE_PATH_RESTRICTION;
-import static org.apache.jackrabbit.oak.plugins.index.lucene.LuceneIndexConstants.EXCLUDE_PROPERTY_NAMES;
-import static org.apache.jackrabbit.oak.plugins.index.lucene.LuceneIndexConstants.EXPERIMENTAL_STORAGE;
-import static org.apache.jackrabbit.oak.plugins.index.lucene.LuceneIndexConstants.FIELD_BOOST;
-import static org.apache.jackrabbit.oak.plugins.index.lucene.LuceneIndexConstants.FULL_TEXT_ENABLED;
-import static org.apache.jackrabbit.oak.plugins.index.lucene.LuceneIndexConstants.INCLUDE_PROPERTY_NAMES;
-import static org.apache.jackrabbit.oak.plugins.index.lucene.LuceneIndexConstants.INCLUDE_PROPERTY_TYPES;
-import static org.apache.jackrabbit.oak.plugins.index.lucene.LuceneIndexConstants.INDEX_DATA_CHILD_NAME;
-import static org.apache.jackrabbit.oak.plugins.index.lucene.LuceneIndexConstants.ORDERED_PROP_NAMES;
-import static org.apache.jackrabbit.oak.plugins.index.lucene.LuceneIndexConstants.PROP_NAME;
-import static org.apache.jackrabbit.oak.plugins.index.lucene.LuceneIndexConstants.PROP_NODE;
-import static org.apache.jackrabbit.oak.plugins.index.lucene.LuceneIndexConstants.TIKA;
-import static org.apache.jackrabbit.oak.plugins.index.lucene.LuceneIndexConstants.TIKA_CONFIG;
+import static org.apache.jackrabbit.oak.plugins.index.lucene.LuceneIndexConstants.*;
 import static org.apache.jackrabbit.oak.plugins.index.lucene.PropertyDefinition.DEFAULT_BOOST;
 import static org.apache.jackrabbit.oak.plugins.index.lucene.util.ConfigUtil.getOptionalValue;
 import static org.apache.jackrabbit.oak.plugins.memory.EmptyNodeState.EMPTY_NODE;
 import static org.apache.jackrabbit.oak.plugins.nodetype.NodeTypeConstants.NODE_TYPES_PATH;
 
-class IndexDefinition implements Aggregate.AggregateMapper{
+class IndexDefinition implements Aggregate.AggregateMapper {
     /**
      * Name of the internal property that contains the child order defined in
      * org.apache.jackrabbit.oak.plugins.tree.impl.TreeConstants
@@ -220,6 +205,12 @@ class IndexDefinition implements Aggregate.AggregateMapper{
 
     private final boolean suggestAnalyzed;
 
+    private final boolean secureFacets;
+
+    private final boolean suggestEnabled;
+
+    private final boolean spellcheckEnabled;
+
     public IndexDefinition(NodeState root, NodeState defn) {
         this(root, defn, null);
     }
@@ -286,6 +277,13 @@ class IndexDefinition implements Aggregate.AggregateMapper{
         this.queryPaths = getQueryPaths(defn);
         this.saveDirListing = getOptionalValue(defn, LuceneIndexConstants.SAVE_DIR_LISTING, true);
         this.suggestAnalyzed = getOptionalValue(defn, LuceneIndexConstants.SUGGEST_ANALYZED, false);
+        this.secureFacets = defn.hasChildNode(FACETS) && getOptionalValue(defn.getChildNode(FACETS), PROP_SECURE_FACETS, true);
+        this.suggestEnabled = evaluateSuggestionEnabled();
+        this.spellcheckEnabled = evaluateSpellcheckEnabled();
+    }
+
+    public NodeState getDefinitionNodeState() {
+        return definition;
     }
 
     public boolean isFullTextEnabled() {
@@ -603,23 +601,44 @@ class IndexDefinition implements Aggregate.AggregateMapper{
         return ntBaseRule != null;
     }
 
-    public boolean isSuggestEnabled() {
-        boolean suggestEnabled = false;
+    private boolean evaluateSuggestionEnabled() {
         for (IndexingRule indexingRule : definedRules) {
             for (PropertyDefinition propertyDefinition : indexingRule.propConfigs.values()) {
                 if (propertyDefinition.useInSuggest) {
-                    suggestEnabled = true;
-                    break;
+                    return true;
                 }
             }
             for (NamePattern np : indexingRule.namePatterns) {
                 if (np.getConfig().useInSuggest) {
-                    suggestEnabled = true;
-                    break;
+                    return true;
                 }
             }
         }
+        return false;
+    }
+
+    public boolean isSuggestEnabled() {
         return suggestEnabled;
+    }
+
+    private boolean evaluateSpellcheckEnabled() {
+        for (IndexingRule indexingRule : definedRules) {
+            for (PropertyDefinition propertyDefinition : indexingRule.propConfigs.values()) {
+                if (propertyDefinition.useInSpellcheck) {
+                    return true;
+                }
+            }
+            for (NamePattern np : indexingRule.namePatterns) {
+                if (np.getConfig().useInSpellcheck) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    public boolean isSpellcheckEnabled() {
+        return spellcheckEnabled;
     }
 
     @CheckForNull
@@ -629,6 +648,10 @@ class IndexDefinition implements Aggregate.AggregateMapper{
 
     public boolean isSuggestAnalyzed() {
         return suggestAnalyzed;
+    }
+
+    public boolean isSecureFacets() {
+        return secureFacets;
     }
 
     public class IndexingRule {
@@ -732,6 +755,13 @@ class IndexDefinition implements Aggregate.AggregateMapper{
          */
         public String getNodeTypeName() {
             return nodeTypeName;
+        }
+
+        /**
+         * @return name of the base node type.
+         */
+        public String getBaseNodeType() {
+            return baseNodeType;
         }
 
         public List<PropertyDefinition> getNullCheckEnabledProperties() {

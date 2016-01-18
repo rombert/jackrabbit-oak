@@ -16,7 +16,6 @@
  */
 package org.apache.jackrabbit.oak.jcr;
 
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Set;
 
@@ -31,6 +30,7 @@ import org.apache.jackrabbit.api.JackrabbitRepository;
 import org.apache.jackrabbit.commons.jackrabbit.authorization.AccessControlUtils;
 import org.apache.jackrabbit.oak.commons.FixturesHelper;
 import org.apache.jackrabbit.oak.commons.FixturesHelper.Fixture;
+import org.apache.jackrabbit.oak.fixture.NodeStoreFixture;
 import org.apache.jackrabbit.oak.query.QueryEngineSettings;
 import org.apache.jackrabbit.oak.spi.security.principal.EveryonePrincipal;
 import org.apache.jackrabbit.oak.spi.security.user.UserConstants;
@@ -70,23 +70,7 @@ public abstract class AbstractRepositoryTest {
 
     @Parameterized.Parameters(name="{0}")
     public static Collection<Object[]> fixtures() {
-        Collection<Object[]> result = new ArrayList<Object[]>();
-        if (FIXTURES.contains(Fixture.DOCUMENT_NS)) {
-            result.add(new Object[] { NodeStoreFixture.DOCUMENT_NS });
-        }
-        if (FIXTURES.contains(Fixture.SEGMENT_MK)) {
-            result.add(new Object[] { NodeStoreFixture.SEGMENT_MK });
-        }
-        if (FIXTURES.contains(Fixture.DOCUMENT_RDB)) {
-            result.add(new Object[] { NodeStoreFixture.DOCUMENT_RDB });
-        }
-        if (FIXTURES.contains(Fixture.MEMORY_NS)) {
-            result.add(new Object[] { NodeStoreFixture.MEMORY_NS});
-        }
-        if (FIXTURES.contains(Fixture.MEMORY_MULTI_NS)) {
-            result.add(new Object[] { NodeStoreFixture.MEMORY_MULTI_NS});
-        }
-        return result;
+        return NodeStoreFixture.asJunitParameters(FIXTURES);
     }
 
     @After
@@ -124,11 +108,8 @@ public abstract class AbstractRepositoryTest {
 
     protected Jcr initJcr(Jcr jcr) {
         QueryEngineSettings qs = new QueryEngineSettings();
-        // OAK-3743: fullTextComparisonWithoutIndex temporarily disabled
-        // qs.setFullTextComparisonWithoutIndex(true);
-        // OAK-3743: withAsyncIndexing temporarily disabled
-        // return jcr.withAsyncIndexing().with(qs);
-        return jcr.with(qs);
+        qs.setFullTextComparisonWithoutIndex(true);
+        return jcr.withAsyncIndexing().with(qs);
     }
 
     protected Session getAdminSession() throws RepositoryException {

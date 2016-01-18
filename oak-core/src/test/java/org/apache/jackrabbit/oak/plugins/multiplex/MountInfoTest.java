@@ -37,5 +37,4 @@ public class MountInfoTest {
         assertFalse(md.isMounted("/x/y"));
         assertFalse(md.isMounted("/x/y/foo"));
     }
-
 }
