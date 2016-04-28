@@ -30,7 +30,24 @@ Query Indices are defined under the `oak:index` node.
 
 For NodeIterator.getSize(), some versions of Jackrabbit 2.x returned the estimated (raw)
 Lucene result set size, including nodes that are not accessible. 
-Oak does not do this; it either returns the correct result size, or -1.
+By default, Oak does not do this; it either returns the correct result size, or -1.
+
+Oak 1.2.x and newer supports a compatibility flag so that it works in the same way
+as Jackrabbit 2.x, by returning an estimate. See also OAK-2926.
+This is best configured as described in OAK-2977:
+When using Apache Sling, since Oak 1.3.x, 
+add the following line to the file `conf/sling.properties`,
+and then restart the application:
+
+    oak.query.fastResultSize=true
+
+Please note this only works with the Lucene `compatVersion=2` right now.
+Example code to show how this work (where `test` is a common word in the index):
+
+    String query = "//element(*, cq:Page)[jcr:contains(., 'test')]";
+    Query query = queryManager.createQuery(qs, "xpath");
+    QueryResult result = query.execute();
+    long size = result.getRows().getSize();
 
 #### Quoting
 
@@ -158,7 +175,7 @@ index, in a special property named `rep:spellcheck()`.
 
 Clients wanting to obtain spellchecks could use the following JCR code:
 
-`@until Oak 1.3.10` spellchecks are returned flat.
+`@until Oak 1.3.10, 1.2.13` spellchecks are returned flat.
        
     QueryManager qm = ...;
     String xpath = "/jcr:root[rep:spellcheck('helo')]/(rep:spellcheck())";
@@ -173,7 +190,7 @@ The `spellchecks` String would be have the following pattern `\[[\w|\W]+(\,\s[\w
 
     [hello, hold]
     
-`@since Oak 1.3.11` each spellcheck would be returned per row.
+`@since Oak 1.3.11, 1.2.14` each spellcheck would be returned per row.
 
     QueryManager qm = ...;
     String xpath = "/jcr:root[rep:spellcheck('helo')]/(rep:spellcheck())";
@@ -206,7 +223,7 @@ suggested and scored by the used underlying index, in a special property named `
 
 Clients wanting to obtain suggestions could use the following JCR code:
 
-`@until Oak 1.3.10` suggestions are returned flat.
+`@until Oak 1.3.10, 1.2.13` suggestions are returned flat.
        
     QueryManager qm = ...;
     String xpath = "/jcr:root[rep:suggest('in ')]/(rep:suggest())";
@@ -216,8 +233,13 @@ Clients wanting to obtain suggestions could use the following JCR code:
     if (it.hasNext()) {
         suggestions = row.getValue("rep:suggest()").getString()        
     }
+
+The `suggestions` String would be have the following pattern `\[\{(term\=)[\w|\W]+(\,weight\=)\d+\}(\,\{(term\=)[\w|\W]+(\,weight\=)\d+\})*\]`, e.g.:
+
+    [{term=in 2015 a red fox is still a fox,weight=1.5}, {term=in 2015 my fox is red, like mike's fox and john's fox,weight=0.7}]
     
-`@since Oak 1.3.11` each suggestion would be returned per row.
+    
+`@since Oak 1.3.11, 1.2.14` each suggestion would be returned per row.
 
     QueryManager qm = ...;
     String xpath = "/jcr:root[rep:suggest('in ')]/(rep:suggest())";
@@ -229,12 +251,30 @@ Clients wanting to obtain suggestions could use the following JCR code:
     }
     
 If either Lucene or Solr were configured to provide the suggestions feature, see [Enable suggestions in Lucene](lucene.html#Suggestions) and [Enable
-suggestions in Solr](solr.html#Suggestions), the `suggestions` String would be have the following pattern `\[\{(term\=)[\w|\W]+(\,weight\=)\d+\}(\,\{(term\=)[\w|\W]+(\,weight\=)\d+\})*\]`, e.g.:
-
-    [{term=in 2015 a red fox is still a fox,weight=1.5}, {term=in 2015 my fox is red, like mike's fox and john's fox,weight=0.7}]
-
+suggestions in Solr](solr.html#Suggestions).
 Note that suggested terms come already filtered according to calling user privileges, so that users could see suggested
 terms only coming from indexed content they are allowed to read.
+
+### Facets 
+
+`@since Oak 1.3.14` Oak has support for [facets](https://en.wikipedia.org/wiki/Faceted_search). 
+Once enabled (see details for [Lucene](lucene.html#Facets) and/or [Solr](solr.html#Suggestions) indexes) facets can be retrieved on properties (backed by a proper
+field in Lucene / Solr) using the following snippet:
+
+    String sql2 = "select [jcr:path], [rep:facet(tags)] from [nt:base] " +
+                    "where contains([jcr:title], 'oak');
+    Query q = qm.createQuery(sql2, Query.JCR_SQL2);
+    QueryResult result = q.execute();
+    FacetResult facetResult = new FacetResult(result);
+    Set<String> dimensions = facetResult.getDimensions(); // { "tags" }
+    List<FacetResult.Facet> facets = facetResult.getFacets("tags");
+    for (FacetResult.Facet facet : facets) {
+        String label = facet.getLabel();
+        int count = facet.getCount();
+        ...
+    }
+    
+Nodes/Rows can still be retrieved from within the QueryResult object the usual way.
 
 ### XPath to SQL2 Transformation
 
@@ -276,7 +316,30 @@ traversed at the given subtree.
 
 Usually, data is read from the index and repository while traversing over the query 
 result. There are exceptions however, where all data is read in memory when the query
-is executed: when using a full-text index, and when using an "order by" clause.
+is executed. The most common case is when using an `order by` clause and 
+the index can not provide a sorted result.
+There are other cases where paths of the results read so far are kept in memory, 
+in order to not return duplicate results. 
+This is the case when using `or` conditions such that two indexes are used 
+(internally a `union` query is executed).
+
+If you enable debug logging for the module `org.apache.jackrabbit.oak.query`, you may see this:
+
+    cost for nodeType is 1638354.0
+    cost for property is 2.0
+    cost for traverse is 3451100.0
+    
+This means the cost for the nodetype index _would_ be about 1638354.0, 
+the cost for the property index _would_ be about 2, 
+and the cost for traversal _would_ be about 3451100.0. 
+It doesn't say traversal is actually used, it just lists the expected costs. 
+The query engine will then pick the index with the lowest expected cost, 
+which is (in the case above) "property".
+
+The expected cost for traversal is, with Oak 1.0.x, really just a guess looking at 
+the length of the path. With Oak 1.2 and newer, the "counter" index is used 
+(see mainly OAK-1907). There is an known issue with this, if you add and remove a lot 
+of nodes in a loop, you could end up with a too-low cost, see OAK-4065.
 
 ### The Node Type Index
 
@@ -326,7 +389,9 @@ entire Lucene directory to the local file system and browse it using a dedicated
 
     @since 1.3.9 with -Doak.query.sql2optimisation
 
-if enabled by providing `-Doak.query.sql2optimisation` at start-up, it
-will perform a round of optimisation on the `Query` object obtained
-after parsing a SQL2 statement. It will for example attempt a
-conversion of OR conditions into UNION (OAK-1617).
+Enabled by default in 1.3.11 it will perform a round of optimisation
+on the `Query` object obtained after parsing a SQL2 statement. It will
+for example attempt a conversion of OR conditions into UNION
+[OAK-1617](https://issues.apache.org/jira/browse/OAK-1617).
+
+To disable it provide `-Doak.query.sql2optimisation=false` at the start-up.

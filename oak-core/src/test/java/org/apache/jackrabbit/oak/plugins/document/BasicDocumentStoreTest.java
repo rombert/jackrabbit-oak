@@ -69,6 +69,23 @@ public class BasicDocumentStoreTest extends AbstractDocumentStoreTest {
     }
 
     @Test
+    public void testAddAndRemoveJournalEntry() {
+        // OAK-4021
+        String id = this.getClass().getName() + ".testAddAndRemoveJournalEntry";
+
+        // remove if present
+        Document d = super.ds.find(Collection.JOURNAL, id);
+        if (d != null) {
+            super.ds.remove(Collection.JOURNAL, id);
+        }
+
+        // add
+        UpdateOp up = new UpdateOp(id, true);
+        up.set("_id", id);
+        assertTrue(super.ds.create(Collection.JOURNAL, Collections.singletonList(up)));
+    }
+
+    @Test
     public void testConditionalUpdate() {
         String id = this.getClass().getName() + ".testConditionalUpdate";
 
@@ -899,6 +916,25 @@ public class BasicDocumentStoreTest extends AbstractDocumentStoreTest {
                 fail("document must not exist: " + doc.getId());
             }
         }
+    }
+
+    @Test
+    public void removeInvalidatesCache() throws Exception {
+        String id = Utils.getIdFromPath("/foo");
+        removeMe.add(id);
+        ds.create(Collection.NODES, Collections.singletonList(newDocument("/foo", 1)));
+
+        Map<Key, Condition> conditions = Collections.emptyMap();
+        ds.remove(Collection.NODES, Collections.singletonMap(id, conditions));
+        assertNull(ds.getIfCached(Collection.NODES, id));
+    }
+
+    // OAK-3932
+    @Test
+    public void getIfCachedNonExistingDocument() throws Exception {
+        String id = Utils.getIdFromPath("/foo");
+        assertNull(ds.find(Collection.NODES, id));
+        assertNull(ds.getIfCached(Collection.NODES, id));
     }
 
     private UpdateOp newDocument(String path, long modified) {

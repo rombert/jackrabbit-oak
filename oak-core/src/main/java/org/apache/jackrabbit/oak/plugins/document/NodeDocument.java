@@ -803,7 +803,7 @@ public final class NodeDocument extends Document implements CachedNodeDocument{
                 // of the branch if this is for a commit on a branch
                 if (branch != null && !branch.containsCommit(r)) {
                     // change does not belong to the branch
-                    if (branch.getBase().isRevisionNewer(r)) {
+                    if (branch.getBase(changeRev).isRevisionNewer(r)) {
                         // and happened after the base of the branch
                         collisions.add(r);
                     }
@@ -1183,12 +1183,17 @@ public final class NodeDocument extends Document implements CachedNodeDocument{
      * @param context the revision context.
      * @param head    the head revision before this document was retrieved from
      *                the document store.
+     * @param isBinaryValue a predicate that returns {@code true} if the given
+     *                      String value is considered a binary; {@code false}
+     *                      otherwise.
      * @return the split operations.
      */
     @Nonnull
     public Iterable<UpdateOp> split(@Nonnull RevisionContext context,
-                                    @Nonnull RevisionVector head) {
-        return SplitOperations.forDocument(this, context, head, NUM_REVS_THRESHOLD);
+                                    @Nonnull RevisionVector head,
+                                    @Nonnull Predicate<String> isBinaryValue) {
+        return SplitOperations.forDocument(this, context, head,
+                isBinaryValue, NUM_REVS_THRESHOLD);
     }
 
     /**
@@ -2065,7 +2070,7 @@ public final class NodeDocument extends Document implements CachedNodeDocument{
     }
 
     @Nonnull
-    private Map<Revision, String> getDeleted() {
+    Map<Revision, String> getDeleted() {
         return ValueMap.create(this, DELETED);
     }
     

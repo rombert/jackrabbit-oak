@@ -45,7 +45,6 @@ import org.apache.felix.scr.annotations.Reference;
 import org.apache.felix.scr.annotations.ReferenceCardinality;
 import org.apache.felix.scr.annotations.ReferencePolicy;
 import org.apache.felix.scr.annotations.ReferencePolicyOption;
-import org.apache.felix.scr.annotations.References;
 import org.apache.jackrabbit.oak.api.jmx.CacheStatsMBean;
 import org.apache.jackrabbit.oak.cache.CacheStats;
 import org.apache.jackrabbit.oak.commons.PropertiesUtil;
@@ -53,8 +52,6 @@ import org.apache.jackrabbit.oak.osgi.OsgiWhiteboard;
 import org.apache.jackrabbit.oak.plugins.index.IndexEditorProvider;
 import org.apache.jackrabbit.oak.plugins.index.aggregate.NodeAggregator;
 import org.apache.jackrabbit.oak.plugins.index.fulltext.PreExtractedTextProvider;
-import org.apache.jackrabbit.oak.plugins.index.lucene.spi.FulltextQueryTermsProvider;
-import org.apache.jackrabbit.oak.plugins.index.lucene.spi.IndexFieldProvider;
 import org.apache.jackrabbit.oak.spi.commit.BackgroundObserver;
 import org.apache.jackrabbit.oak.plugins.index.lucene.score.ScorerProviderFactory;
 import org.apache.jackrabbit.oak.spi.commit.BackgroundObserverMBean;
@@ -65,6 +62,7 @@ import org.apache.jackrabbit.oak.spi.whiteboard.Whiteboard;
 import org.apache.lucene.analysis.util.CharFilterFactory;
 import org.apache.lucene.analysis.util.TokenFilterFactory;
 import org.apache.lucene.analysis.util.TokenizerFactory;
+import org.apache.lucene.search.BooleanQuery;
 import org.apache.lucene.util.InfoStream;
 import org.osgi.framework.BundleContext;
 import org.osgi.framework.ServiceRegistration;
@@ -77,20 +75,6 @@ import static org.apache.jackrabbit.oak.spi.whiteboard.WhiteboardUtils.registerM
 
 @SuppressWarnings("UnusedDeclaration")
 @Component(metatype = true, label = "Apache Jackrabbit Oak LuceneIndexProvider")
-@References({
-        @Reference(name = "IndexFieldProvider",
-                policy = ReferencePolicy.DYNAMIC,
-                cardinality = ReferenceCardinality.OPTIONAL_MULTIPLE,
-                referenceInterface = IndexFieldProvider.class,
-                bind = "indexFieldProviderServiceUpdated",
-                unbind = "indexFieldProviderServiceUpdated"),
-        @Reference(name = "FulltextQueryTermsProvider",
-                policy = ReferencePolicy.DYNAMIC,
-                cardinality = ReferenceCardinality.OPTIONAL_MULTIPLE,
-                referenceInterface = FulltextQueryTermsProvider.class,
-                bind = "indexFulltextQueryTermsProviderServiceUpdated",
-                unbind = "indexFulltextQueryTermsProviderServiceUpdated")
-})
 public class LuceneIndexProviderService {
     public static final String REPOSITORY_HOME = "repository.home";
 
@@ -187,6 +171,23 @@ public class LuceneIndexProviderService {
     )
     private static final String PROP_EXTRACTED_TEXT_CACHE_EXPIRY = "extractedTextCacheExpiryInSecs";
 
+    private static final boolean PROP_PRE_EXTRACTED_TEXT_ALWAYS_USE_DEFAULT = false;
+    @Property(
+            boolValue = PROP_PRE_EXTRACTED_TEXT_ALWAYS_USE_DEFAULT,
+            label = "Always use pre-extracted text cache",
+            description = "By default pre extracted text cache would only be used for reindex case. If this setting " +
+                    "is enabled then it would also be used in normal incremental indexing"
+    )
+    private static final String PROP_PRE_EXTRACTED_TEXT_ALWAYS_USE = "alwaysUsePreExtractedCache";
+
+    private static final int PROP_BOOLEAN_CLAUSE_LIMIT_DEFAULT = 1024;
+    @Property(
+            intValue = PROP_BOOLEAN_CLAUSE_LIMIT_DEFAULT,
+            label = "Boolean Clause Limit",
+            description = "Limit for number of boolean clauses generated for handling of OR query"
+    )
+    private static final String PROP_BOOLEAN_CLAUSE_LIMIT = "booleanClauseLimit";
+
     private Whiteboard whiteboard;
 
     private BackgroundObserver backgroundObserver;
@@ -194,10 +195,11 @@ public class LuceneIndexProviderService {
     @Reference
     ScorerProviderFactory scorerFactory;
 
+    @Reference
     private IndexAugmentorFactory augmentorFactory;
 
     @Reference(policy = ReferencePolicy.DYNAMIC,
-            cardinality = ReferenceCardinality.OPTIONAL_MULTIPLE,
+            cardinality = ReferenceCardinality.OPTIONAL_UNARY,
             policyOption = ReferencePolicyOption.GREEDY
     )
     private volatile PreExtractedTextProvider extractedTextProvider;
@@ -222,11 +224,11 @@ public class LuceneIndexProviderService {
             return;
         }
 
+        configureBooleanClauseLimit(config);
         initializeFactoryClassLoaders(getClass().getClassLoader());
         whiteboard = new OsgiWhiteboard(bundleContext);
         threadPoolSize = PropertiesUtil.toInteger(config.get(PROP_THREAD_POOL_SIZE), PROP_THREAD_POOL_SIZE_DEFAULT);
         initializeExtractedTextCache(bundleContext, config);
-        augmentorFactory = new IndexAugmentorFactory(whiteboard);
         indexProvider = new LuceneIndexProvider(createTracker(bundleContext, config), scorerFactory, augmentorFactory);
         initializeLogging(config);
         initialize();
@@ -446,9 +448,13 @@ public class LuceneIndexProviderService {
                 PROP_EXTRACTED_TEXT_CACHE_SIZE_DEFAULT);
         int cacheExpiryInSecs = PropertiesUtil.toInteger(config.get(PROP_EXTRACTED_TEXT_CACHE_EXPIRY),
                 PROP_EXTRACTED_TEXT_CACHE_EXPIRY_DEFAULT);
+        boolean alwaysUsePreExtractedCache = PropertiesUtil.toBoolean(config.get(PROP_PRE_EXTRACTED_TEXT_ALWAYS_USE),
+                PROP_PRE_EXTRACTED_TEXT_ALWAYS_USE_DEFAULT);
 
-        extractedTextCache = new ExtractedTextCache(cacheSizeInMB * ONE_MB, cacheExpiryInSecs);
-
+        extractedTextCache = new ExtractedTextCache(cacheSizeInMB * ONE_MB, cacheExpiryInSecs, alwaysUsePreExtractedCache);
+        if (extractedTextProvider != null){
+            registerExtractedTextProvider(extractedTextProvider);
+        }
         CacheStats stats = extractedTextCache.getCacheStats();
         if (stats != null){
             oakRegs.add(registerMBean(whiteboard,
@@ -462,11 +468,23 @@ public class LuceneIndexProviderService {
     private void registerExtractedTextProvider(PreExtractedTextProvider provider){
         if (extractedTextCache != null){
             if (provider != null){
-                log.info("Registering PreExtractedTextProvider {} with extracted text cache", provider);
+                String usage = extractedTextCache.isAlwaysUsePreExtractedCache() ?
+                        "always" : "only during reindexing phase";
+                log.info("Registering PreExtractedTextProvider {} with extracted text cache. " +
+                        "It would be used {}",  provider, usage);
             } else {
                 log.info("Unregistering PreExtractedTextProvider with extracted text cache");
             }
             extractedTextCache.setExtractedTextProvider(provider);
+        }
+    }
+
+    private void configureBooleanClauseLimit(Map<String, ?> config) {
+        int booleanClauseLimit = PropertiesUtil.toInteger(config.get(PROP_BOOLEAN_CLAUSE_LIMIT),
+                PROP_BOOLEAN_CLAUSE_LIMIT_DEFAULT);
+        if (booleanClauseLimit != BooleanQuery.getMaxClauseCount()){
+            BooleanQuery.setMaxClauseCount(booleanClauseLimit);
+            log.info("Changed the Max boolean clause limit to {}", booleanClauseLimit);
         }
     }
 
@@ -489,13 +507,5 @@ public class LuceneIndexProviderService {
     protected void unbindExtractedTextProvider(PreExtractedTextProvider preExtractedTextProvider){
         this.extractedTextProvider = null;
         registerExtractedTextProvider(null);
-    }
-
-    private void indexFieldProviderServiceUpdated(IndexFieldProvider indexFieldProvider) {
-        augmentorFactory.refreshServices();
-    }
-
-    private void indexFulltextQueryTermsProviderServiceUpdated(FulltextQueryTermsProvider fulltextQueryTermsProvider) {
-        augmentorFactory.refreshServices();
     }
 }

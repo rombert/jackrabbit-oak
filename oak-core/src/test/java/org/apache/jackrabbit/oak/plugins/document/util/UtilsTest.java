@@ -38,6 +38,7 @@ import org.apache.jackrabbit.oak.spi.state.NodeBuilder;
 import org.junit.Ignore;
 import org.junit.Test;
 
+import static org.junit.Assert.assertFalse;
 /**
  * Tests for {@link Utils}.
  */
@@ -52,6 +53,28 @@ public class UtilsTest {
                 Utils.getPreviousIdFor("/test", r, 1));
         assertEquals("15:p/a/b/c/d/e/f/g/h/i/j/k/l/m/" + r.toString() + "/3",
                 Utils.getPreviousIdFor("/a/b/c/d/e/f/g/h/i/j/k/l/m", r, 3));
+    }
+
+    @Test
+    public void previousDoc() throws Exception{
+        Revision r = new Revision(System.currentTimeMillis(), 0, 0);
+        assertTrue(Utils.isPreviousDocId(Utils.getPreviousIdFor("/", r, 0)));
+        assertTrue(Utils.isPreviousDocId(Utils.getPreviousIdFor("/a/b/c/d/e/f/g/h/i/j/k/l/m", r, 3)));
+        assertFalse(Utils.isPreviousDocId(Utils.getIdFromPath("/a/b")));
+        assertFalse(Utils.isPreviousDocId("foo"));
+        assertFalse(Utils.isPreviousDocId("0:"));
+    }
+
+    @Test
+    public void leafPreviousDoc() throws Exception {
+        Revision r = new Revision(System.currentTimeMillis(), 0, 0);
+        assertTrue(Utils.isLeafPreviousDocId(Utils.getPreviousIdFor("/", r, 0)));
+        assertTrue(Utils.isLeafPreviousDocId(Utils.getPreviousIdFor("/a/b/c/d/e/f/g/h/i/j/k/l/m", r, 0)));
+        assertFalse(Utils.isLeafPreviousDocId(Utils.getPreviousIdFor("/a/b/c/d/e/f/g/h/i/j/k/l/m", r, 3)));
+        assertFalse(Utils.isLeafPreviousDocId(Utils.getIdFromPath("/a/b")));
+        assertFalse(Utils.isLeafPreviousDocId("foo"));
+        assertFalse(Utils.isLeafPreviousDocId("0:"));
+        assertFalse(Utils.isLeafPreviousDocId(":/0"));
     }
 
     @Test

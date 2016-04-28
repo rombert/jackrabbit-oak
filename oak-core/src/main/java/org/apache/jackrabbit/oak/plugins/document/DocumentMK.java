@@ -22,8 +22,11 @@ import static com.google.common.base.Preconditions.checkState;
 import java.io.InputStream;
 import java.util.List;
 import java.net.UnknownHostException;
+import java.util.EnumMap;
 import java.util.Iterator;
+import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 
@@ -35,6 +38,9 @@ import javax.sql.DataSource;
 import com.google.common.base.Preconditions;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
+import com.google.common.cache.RemovalCause;
+import com.google.common.cache.RemovalListener;
+import com.google.common.cache.RemovalNotification;
 import com.google.common.cache.Weigher;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
@@ -42,6 +48,7 @@ import com.google.common.util.concurrent.MoreExecutors;
 import com.mongodb.DB;
 import org.apache.jackrabbit.oak.api.CommitFailedException;
 import org.apache.jackrabbit.oak.cache.CacheLIRS;
+import org.apache.jackrabbit.oak.cache.CacheLIRS.EvictionCallback;
 import org.apache.jackrabbit.oak.cache.CacheStats;
 import org.apache.jackrabbit.oak.cache.CacheValue;
 import org.apache.jackrabbit.oak.cache.EmpiricalWeigher;
@@ -64,7 +71,9 @@ import org.apache.jackrabbit.oak.plugins.document.mongo.MongoDocumentStore;
 import org.apache.jackrabbit.oak.plugins.document.mongo.MongoMissingLastRevSeeker;
 import org.apache.jackrabbit.oak.plugins.document.mongo.MongoVersionGCSupport;
 import org.apache.jackrabbit.oak.plugins.document.persistentCache.CacheType;
+import org.apache.jackrabbit.oak.plugins.document.persistentCache.EvictionListener;
 import org.apache.jackrabbit.oak.plugins.document.persistentCache.PersistentCache;
+import org.apache.jackrabbit.oak.plugins.document.persistentCache.PersistentCacheStats;
 import org.apache.jackrabbit.oak.plugins.document.rdb.RDBBlobStore;
 import org.apache.jackrabbit.oak.plugins.document.rdb.RDBDocumentStore;
 import org.apache.jackrabbit.oak.plugins.document.rdb.RDBOptions;
@@ -87,13 +96,13 @@ import org.slf4j.LoggerFactory;
  * data in a {@link DocumentStore}. It is used for testing purpose only.
  */
 public class DocumentMK {
-    
+
     static final Logger LOG = LoggerFactory.getLogger(DocumentMK.class);
-    
+
     /**
      * The path where the persistent cache is stored.
      */
-    static final String DEFAULT_PERSISTENT_CACHE_URI = 
+    static final String DEFAULT_PERSISTENT_CACHE_URI =
             System.getProperty("oak.documentMK.persCache");
 
     /**
@@ -106,7 +115,7 @@ public class DocumentMK {
      * Enable or disable the LIRS cache (null to use the default setting for this configuration).
      */
     static final Boolean LIRS_CACHE;
-    
+
     static {
         String s = System.getProperty("oak.documentMK.lirsCache");
         LIRS_CACHE = s == null ? null : Boolean.parseBoolean(s);
@@ -341,7 +350,7 @@ public class DocumentMK {
             throw new DocumentStoreException("Not a branch revision: " + ancestorRevisionId);
         }
         try {
-            return nodeStore.reset(branch, ancestor, null).toString();
+            return nodeStore.reset(branch, ancestor).toString();
         } catch (DocumentStoreException e) {
             throw new DocumentStoreException(e);
         }
@@ -493,6 +502,7 @@ public class DocumentMK {
     public static class Builder {
         private static final long DEFAULT_MEMORY_CACHE_SIZE = 256 * 1024 * 1024;
         public static final int DEFAULT_NODE_CACHE_PERCENTAGE = 25;
+        public static final int DEFAULT_PREV_DOC_CACHE_PERCENTAGE = 4;
         public static final int DEFAULT_CHILDREN_CACHE_PERCENTAGE = 10;
         public static final int DEFAULT_DIFF_CACHE_PERCENTAGE = 5;
         public static final int DEFAULT_DOC_CHILDREN_CACHE_PERCENTAGE = 3;
@@ -507,9 +517,11 @@ public class DocumentMK {
         private boolean timing;
         private boolean logging;
         private boolean leaseCheck = true; // OAK-2739 is enabled by default also for non-osgi
+        private boolean isReadOnlyMode = false;
         private Weigher<CacheValue, CacheValue> weigher = new EmpiricalWeigher();
         private long memoryCacheSize = DEFAULT_MEMORY_CACHE_SIZE;
         private int nodeCachePercentage = DEFAULT_NODE_CACHE_PERCENTAGE;
+        private int prevDocCachePercentage = DEFAULT_PREV_DOC_CACHE_PERCENTAGE;
         private int childrenCachePercentage = DEFAULT_CHILDREN_CACHE_PERCENTAGE;
         private int diffCachePercentage = DEFAULT_DIFF_CACHE_PERCENTAGE;
         private int docChildrenCachePercentage = DEFAULT_DOC_CHILDREN_CACHE_PERCENTAGE;
@@ -529,6 +541,9 @@ public class DocumentMK {
         private StatisticsProvider statisticsProvider = StatisticsProvider.NOOP;
         private BlobStoreStats blobStoreStats;
         private CacheStats blobStoreCacheStats;
+        private DocumentStoreStatsCollector documentStoreStatsCollector;
+        private Map<CacheType, PersistentCacheStats> persistentCacheStats =
+                new EnumMap<CacheType, PersistentCacheStats>(CacheType.class);
 
         public Builder() {
             
@@ -670,11 +685,7 @@ public class DocumentMK {
          * @return this
          */
         public Builder setRDBConnection(DataSource ds) {
-            this.documentStore = new RDBDocumentStore(ds, this);
-            if(this.blobStore == null) {
-                this.blobStore = new RDBBlobStore(ds);
-                configureBlobStore(blobStore);
-            }
+            setRDBConnection(ds, new RDBOptions());
             return this;
         }
 
@@ -694,16 +705,6 @@ public class DocumentMK {
         }
 
         /**
-         * Sets the persistent cache option.
-         *
-         * @return this
-         */
-        public Builder setPersistentCache(String persistentCache) {
-            this.persistentCacheURI = persistentCache;
-            return this;
-        }
-
-        /**
          * Sets a {@link DataSource}s to use for the RDB document and blob
          * stores.
          *
@@ -713,6 +714,16 @@ public class DocumentMK {
             this.documentStore = new RDBDocumentStore(documentStoreDataSource, this);
             this.blobStore = new RDBBlobStore(blobStoreDataSource);
             configureBlobStore(blobStore);
+            return this;
+        }
+
+        /**
+         * Sets the persistent cache option.
+         *
+         * @return this
+         */
+        public Builder setPersistentCache(String persistentCache) {
+            this.persistentCacheURI = persistentCache;
             return this;
         }
 
@@ -739,25 +750,34 @@ public class DocumentMK {
         public boolean getLogging() {
             return logging;
         }
-        
+
         public Builder setLeaseCheck(boolean leaseCheck) {
             this.leaseCheck = leaseCheck;
             return this;
         }
-        
+
         public boolean getLeaseCheck() {
             return leaseCheck;
+        }
+
+        public Builder setReadOnlyMode() {
+            this.isReadOnlyMode = true;
+            return this;
+        }
+
+        public boolean getReadOnlyMode() {
+            return isReadOnlyMode;
         }
 
         public Builder setLeaseFailureHandler(LeaseFailureHandler leaseFailureHandler) {
             this.leaseFailureHandler = leaseFailureHandler;
             return this;
         }
-        
+
         public LeaseFailureHandler getLeaseFailureHandler() {
             return leaseFailureHandler;
         }
-        
+
         /**
          * Set the document store to use. By default an in-memory store is used.
          *
@@ -835,12 +855,12 @@ public class DocumentMK {
             this.clusterId = clusterId;
             return this;
         }
-        
+
         public Builder setCacheSegmentCount(int cacheSegmentCount) {
             this.cacheSegmentCount = cacheSegmentCount;
             return this;
         }
-        
+
         public Builder setCacheStackMoveDistance(int cacheSegmentCount) {
             this.cacheStackMoveDistance = cacheSegmentCount;
             return this;
@@ -879,18 +899,21 @@ public class DocumentMK {
             this.memoryCacheSize = memoryCacheSize;
             return this;
         }
-        
+
         public Builder memoryCacheDistribution(int nodeCachePercentage,
+                                               int prevDocCachePercentage,
                                                int childrenCachePercentage,
                                                int docChildrenCachePercentage,
                                                int diffCachePercentage) {
             checkArgument(nodeCachePercentage >= 0);
+            checkArgument(prevDocCachePercentage >= 0);
             checkArgument(childrenCachePercentage>= 0);
             checkArgument(docChildrenCachePercentage >= 0);
             checkArgument(diffCachePercentage >= 0);
-            checkArgument(nodeCachePercentage + childrenCachePercentage + 
+            checkArgument(nodeCachePercentage + prevDocCachePercentage + childrenCachePercentage +
                     docChildrenCachePercentage + diffCachePercentage < 100);
             this.nodeCachePercentage = nodeCachePercentage;
+            this.prevDocCachePercentage = prevDocCachePercentage;
             this.childrenCachePercentage = childrenCachePercentage;
             this.docChildrenCachePercentage = docChildrenCachePercentage;
             this.diffCachePercentage = diffCachePercentage;
@@ -901,12 +924,16 @@ public class DocumentMK {
             return memoryCacheSize * nodeCachePercentage / 100;
         }
 
+        public long getPrevDocumentCacheSize() {
+            return memoryCacheSize * prevDocCachePercentage / 100;
+        }
+
         public long getChildrenCacheSize() {
             return memoryCacheSize * childrenCachePercentage / 100;
         }
 
         public long getDocumentCacheSize() {
-            return memoryCacheSize - getNodeCacheSize() - getChildrenCacheSize() 
+            return memoryCacheSize - getNodeCacheSize() - getPrevDocumentCacheSize() - getChildrenCacheSize()
                     - getDiffCacheSize() - getDocChildrenCacheSize();
         }
 
@@ -955,6 +982,26 @@ public class DocumentMK {
         public Builder setStatisticsProvider(StatisticsProvider statisticsProvider){
             this.statisticsProvider = statisticsProvider;
             return this;
+        }
+
+        public StatisticsProvider getStatisticsProvider() {
+            return this.statisticsProvider;
+        }
+        public DocumentStoreStatsCollector getDocumentStoreStatsCollector() {
+            if (documentStoreStatsCollector == null) {
+                documentStoreStatsCollector = new DocumentStoreStats(statisticsProvider);
+            }
+            return documentStoreStatsCollector;
+        }
+
+        public Builder setDocumentStoreStatsCollector(DocumentStoreStatsCollector documentStoreStatsCollector) {
+            this.documentStoreStatsCollector = documentStoreStatsCollector;
+            return this;
+        }
+
+        @Nonnull
+        public Map<CacheType, PersistentCacheStats> getPersistenceCacheStats() {
+            return persistentCacheStats;
         }
 
         @CheckForNull
@@ -1030,19 +1077,19 @@ public class DocumentMK {
         public DocumentMK open() {
             return new DocumentMK(this);
         }
-        
+
         public Cache<PathRev, DocumentNodeState> buildNodeCache(DocumentNodeStore store) {
             return buildCache(CacheType.NODE, getNodeCacheSize(), store, null);
         }
-        
+
         public Cache<PathRev, DocumentNodeState.Children> buildChildrenCache() {
-            return buildCache(CacheType.CHILDREN, getChildrenCacheSize(), null, null);            
+            return buildCache(CacheType.CHILDREN, getChildrenCacheSize(), null, null);
         }
-        
+
         public Cache<StringValue, NodeDocument.Children> buildDocChildrenCache() {
             return buildCache(CacheType.DOC_CHILDREN, getDocChildrenCacheSize(), null, null);
         }
-        
+
         public Cache<PathRev, StringValue> buildMemoryDiffCache() {
             return buildCache(CacheType.DIFF, getMemoryDiffCacheSize(), null, null);
         }
@@ -1055,30 +1102,47 @@ public class DocumentMK {
             return buildCache(CacheType.DOCUMENT, getDocumentCacheSize(), null, docStore);
         }
 
-        public NodeDocumentCache buildNodeDocumentCache(DocumentStore docStore, NodeDocumentLocks locks) {
-            Cache<CacheValue, NodeDocument> cache = buildDocumentCache(docStore);
-            CacheStats cacheStats = new CacheStats(cache, "Document-Documents", getWeigher(), getDocumentCacheSize());
-            return new NodeDocumentCache(cache, cacheStats, locks);
+        public Cache<StringValue, NodeDocument> buildPrevDocumentsCache(DocumentStore docStore) {
+            return buildCache(CacheType.PREV_DOCUMENT, getPrevDocumentCacheSize(), null, docStore);
         }
 
+        public NodeDocumentCache buildNodeDocumentCache(DocumentStore docStore, NodeDocumentLocks locks) {
+            Cache<CacheValue, NodeDocument> nodeDocumentsCache = buildDocumentCache(docStore);
+            CacheStats nodeDocumentsCacheStats = new CacheStats(nodeDocumentsCache, "Document-Documents", getWeigher(), getDocumentCacheSize());
+
+            Cache<StringValue, NodeDocument> prevDocumentsCache = buildPrevDocumentsCache(docStore);
+            CacheStats prevDocumentsCacheStats = new CacheStats(prevDocumentsCache, "Document-PrevDocuments", getWeigher(), getPrevDocumentCacheSize());
+
+            return new NodeDocumentCache(nodeDocumentsCache, nodeDocumentsCacheStats, prevDocumentsCache, prevDocumentsCacheStats, locks);
+        }
+
+        @SuppressWarnings("unchecked")
         private <K extends CacheValue, V extends CacheValue> Cache<K, V> buildCache(
                 CacheType cacheType,
                 long maxWeight,
                 DocumentNodeStore docNodeStore,
                 DocumentStore docStore
                 ) {
-            Cache<K, V> cache = buildCache(cacheType.name(), maxWeight);
+            Set<EvictionListener<K, V>> listeners = new CopyOnWriteArraySet<EvictionListener<K,V>>();
+            Cache<K, V> cache = buildCache(cacheType.name(), maxWeight, listeners);
             PersistentCache p = getPersistentCache();
             if (p != null) {
                 if (docNodeStore != null) {
                     docNodeStore.setPersistentCache(p);
                 }
-                cache = p.wrap(docNodeStore, docStore, cache, cacheType);
+                cache = p.wrap(docNodeStore, docStore, cache, cacheType, statisticsProvider);
+                if (cache instanceof EvictionListener) {
+                    listeners.add((EvictionListener<K, V>) cache);
+                }
+                PersistentCacheStats stats = PersistentCache.getPersistentCacheStats(cache);
+                if (stats != null) {
+                    persistentCacheStats.put(cacheType, stats);
+                }
             }
             return cache;
         }
-        
-        private PersistentCache getPersistentCache() {
+
+        public PersistentCache getPersistentCache() {
             if (persistentCacheURI == null) {
                 return null;
             }
@@ -1092,10 +1156,11 @@ public class DocumentMK {
             }
             return persistentCache;
         }
-        
+
         private <K extends CacheValue, V extends CacheValue> Cache<K, V> buildCache(
                 String module,
-                long maxWeight) {
+                long maxWeight,
+                final Set<EvictionListener<K, V>> listeners) {
             // by default, use the LIRS cache when using the persistent cache,
             // but don't use it otherwise
             boolean useLirs = persistentCacheURI != null;
@@ -1117,6 +1182,14 @@ public class DocumentMK {
                         segmentCount(cacheSegmentCount).
                         stackMoveDistance(cacheStackMoveDistance).
                         recordStats().
+                        evictionCallback(new EvictionCallback<K, V>() {
+                            @Override
+                            public void evicted(K key, V value, RemovalCause cause) {
+                                for (EvictionListener<K, V> l : listeners) {
+                                    l.evicted(key, value, cause);
+                                }
+                            }
+                        }).
                         build();
             }
             return CacheBuilder.newBuilder().
@@ -1124,6 +1197,14 @@ public class DocumentMK {
                     weigher(weigher).
                     maximumWeight(maxWeight).
                     recordStats().
+                    removalListener(new RemovalListener<K, V>() {
+                        @Override
+                        public void onRemoval(RemovalNotification<K, V> notification) {
+                            for (EvictionListener<K, V> l : listeners) {
+                                l.evicted(notification.getKey(), notification.getValue(), notification.getCause());
+                            }
+                        }
+                    }).
                     build();
         }
         
@@ -1153,5 +1234,5 @@ public class DocumentMK {
         }
 
     }
-    
+
 }

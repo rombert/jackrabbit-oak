@@ -27,11 +27,17 @@ import java.net.Socket;
 import java.net.SocketTimeoutException;
 import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
+import java.nio.charset.Charset;
 import java.security.MessageDigest;
-import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.slf4j.Logger;
@@ -46,27 +52,44 @@ public class TCPBroadcaster implements Broadcaster {
     private static final int TIMEOUT = 100;
     private static final int MAX_BUFFER_SIZE = 64;
     private static final AtomicInteger NEXT_ID = new AtomicInteger();
+    private static final Charset UTF8 = Charset.forName("UTF-8");
 
-    private final byte[] key;
     private final int id = NEXT_ID.incrementAndGet();
+
     private final CopyOnWriteArrayList<Listener> listeners = new CopyOnWriteArrayList<Listener>();
-    private final ServerSocket serverSocket;
-    private final ArrayList<Client> clients = new ArrayList<Client>();
-    private final Thread discoverThread;
-    private final Thread acceptThread;
-    private final Thread sendThread;
-    private final LinkedBlockingDeque<ByteBuffer> sendBuffer = new LinkedBlockingDeque<ByteBuffer>();
-    private volatile boolean stop;
+    private final ConcurrentHashMap<String, Client> clients = new ConcurrentHashMap<String, Client>();
+    private final ArrayBlockingQueue<ByteBuffer> sendBuffer = new ArrayBlockingQueue<ByteBuffer>(MAX_BUFFER_SIZE * 2);
+
+    private volatile DynamicBroadcastConfig broadcastConfig;
+    private ServerSocket serverSocket;
+    private Thread acceptThread;
+    private Thread discoverThread;
+    private Thread sendThread;
+    private String ownListener;
+    private String ownKeyUUID = UUID.randomUUID().toString();
+    private byte[] ownKey = ownKeyUUID.getBytes(UTF8);
+    
+    private final AtomicBoolean stop = new AtomicBoolean(false);
     
     public TCPBroadcaster(String config) {
         LOG.info("Init " + config);
-        MessageDigest messageDigest;
+        init(config);
+    }
+    
+    public void init(String config) {
         try {
             String[] parts = config.split(";");
             int startPort = 9800;
             int endPort = 9810;
             String key = "";
-            String[] sendTo = {"sendTo", "localhost"};
+            
+            // for debugging, this will send everything to localhost:
+            // String[] sendTo = {"sendTo", "localhost"};
+            
+            // by default, only the entries in the clusterNodes 
+            // collection are used:
+            String[] sendTo = {"sendTo"};
+            
             for (String p : parts) {
                 if (p.startsWith("ports ")) {
                     String[] ports = p.split(" ");
@@ -79,8 +102,10 @@ public class TCPBroadcaster implements Broadcaster {
                 }
             }                    
             sendTo[0] = null;
-            messageDigest = MessageDigest.getInstance("SHA-256");
-            this.key = messageDigest.digest(key.getBytes("UTF-8"));
+            MessageDigest messageDigest = MessageDigest.getInstance("SHA-256");
+            if (key.length() > 0) {
+                ownKey = messageDigest.digest(key.getBytes(UTF8));
+            }
             IOException lastException = null;
             ServerSocket server = null;
             for (int port = startPort; port <= endPort; port++) {
@@ -96,8 +121,8 @@ public class TCPBroadcaster implements Broadcaster {
                 for (String send : sendTo) {
                     if (send != null && !send.isEmpty()) {
                         try {
-                            Client c = new Client(send, port);
-                            clients.add(c);
+                            Client c = new Client(send, port, ownKey);
+                            clients.put(send + ":" + port, c);
                         } catch (IOException e) {
                             LOG.debug("Cannot connect to " + send + " " + port);
                             // ignore
@@ -144,8 +169,39 @@ public class TCPBroadcaster implements Broadcaster {
         
     }
     
+    @Override
+    public void setBroadcastConfig(DynamicBroadcastConfig broadcastConfig) {
+        this.broadcastConfig = broadcastConfig;
+        HashMap<String, String> clientInfo = new HashMap<String, String>();
+        clientInfo.put(DynamicBroadcastConfig.ID, ownKeyUUID);
+        ServerSocket s = serverSocket;
+        if (s != null) {
+            String address = getLocalAddress();
+            if (address != null) {
+                ownListener = address + ":" + s.getLocalPort();
+                clientInfo.put(DynamicBroadcastConfig.LISTENER, ownListener);
+            }
+        }
+        broadcastConfig.connect(clientInfo);
+    }
+    
+    static String getLocalAddress() {
+        String bind = System.getProperty("oak.tcpBindAddress", null);
+        try {
+            InetAddress address;
+            if (bind != null && !bind.isEmpty()) {
+                address = InetAddress.getByName(bind);
+            } else {
+                address = InetAddress.getLocalHost();
+            }
+            return address.getHostAddress();
+        } catch (UnknownHostException e) {
+            return "";
+        }
+    }
+    
     void accept() {
-        while (!stop) {
+        while (isRunning()) {
             try {
                 final Socket socket = serverSocket.accept();
                 Runnable r = new Runnable() {
@@ -153,9 +209,9 @@ public class TCPBroadcaster implements Broadcaster {
                     public void run() {
                         try {
                             final DataInputStream in = new DataInputStream(socket.getInputStream());
-                            byte[] testKey = new byte[key.length];
+                            byte[] testKey = new byte[ownKey.length];
                             in.readFully(testKey);
-                            if (ByteBuffer.wrap(testKey).compareTo(ByteBuffer.wrap(key)) != 0) {
+                            if (ByteBuffer.wrap(testKey).compareTo(ByteBuffer.wrap(ownKey)) != 0) {
                                 LOG.debug("Key mismatch");
                                 socket.close();
                                 return;
@@ -172,7 +228,6 @@ public class TCPBroadcaster implements Broadcaster {
                                 }
                             }
                         } catch (IOException e) {
-e.printStackTrace();                            
                             // ignore
                         }
                     }
@@ -183,7 +238,7 @@ e.printStackTrace();
             } catch (SocketTimeoutException e) {
                 // ignore
             } catch (IOException e) {
-                if (!stop) {
+                if (isRunning()) {
                     LOG.warn("Receive failed", e);
                 }
                 // ignore
@@ -198,21 +253,65 @@ e.printStackTrace();
     }
     
     void discover() {
-        while (!stop) {
-            for (Client c : clients) {
-                c.tryConnect(key);
-                if (stop) {
+        while (isRunning()) {
+            DynamicBroadcastConfig b = broadcastConfig;
+            if (b != null) {
+                readClients(b);
+            }
+            for (Client c : clients.values()) {
+                c.tryConnect();
+                if (!isRunning()) {
                     break;
+                }
+            }
+            synchronized (stop) {
+                if (isRunning()) {
+                    try {
+                        stop.wait(2000);
+                    } catch (InterruptedException e) {
+                        // ignore
+                    }
+                }
+            }
+        }
+    }
+    
+    void readClients(DynamicBroadcastConfig b) {
+        List<Map<String, String>> list = b.getClientInfo();
+        for(Map<String, String> m : list) {
+            String listener = m.get(DynamicBroadcastConfig.LISTENER);
+            String id = m.get(DynamicBroadcastConfig.ID);
+            if (listener.equals(ownListener)) {
+                continue;
+            }
+            // the key is the combination of listener and id,
+            // because the same ip address / port combination
+            // could be there multiple time for some time
+            // (in case there is a old, orphan entry for the same machine)
+            String clientKey = listener + " " + id;
+            Client c = clients.get(clientKey);
+            if (c == null) {
+                int index = listener.lastIndexOf(':');
+                if (index >= 0) {
+                    String host = listener.substring(0, index);
+                    int port = Integer.parseInt(listener.substring(index + 1));
+                    try {
+                        byte[] key = id.getBytes(UTF8);
+                        c = new Client(host, port, key);
+                        clients.put(clientKey, c);
+                    } catch (UnknownHostException e) {
+                        // ignore
+                    }
                 }
             }
         }
     }
     
     void send() {
-        while (!stop) {
+        while (isRunning()) {
             try {
-                ByteBuffer buff = sendBuffer.pollLast(10, TimeUnit.MILLISECONDS);
-                if (buff != null && !stop) {
+                ByteBuffer buff = sendBuffer.poll(10, TimeUnit.MILLISECONDS);
+                if (buff != null && isRunning()) {
                     sendBuffer(buff);
                 }
             } catch (InterruptedException e) {
@@ -227,18 +326,24 @@ e.printStackTrace();
         b.put(buff);
         b.flip();
         while (sendBuffer.size() > MAX_BUFFER_SIZE) {
-            sendBuffer.pollLast();
+            sendBuffer.poll();
         }
-        sendBuffer.push(b);
+        try {
+            sendBuffer.add(b);
+        } catch (IllegalStateException e) {
+            // ignore - might happen once in a while,
+            // if the buffer was not yet full just before, but now
+            // many threads concurrently tried to add
+        }
     }
     
     private void sendBuffer(ByteBuffer buff) {
         int len = buff.limit();
         byte[] data = new byte[len];
         buff.get(data);
-        for (Client c : clients) {
+        for (Client c : clients.values()) {
             c.send(data);
-            if (stop) {
+            if (!isRunning()) {
                 break;
             }
         }
@@ -256,9 +361,12 @@ e.printStackTrace();
 
     @Override
     public void close() {
-        if (!stop) {
+        if (isRunning()) {
             LOG.debug("Stopping");
-            this.stop = true;
+            synchronized (stop) {
+                stop.set(true);
+                stop.notifyAll();
+            }
             try {
                 serverSocket.close();
             } catch (IOException e) {
@@ -282,17 +390,19 @@ e.printStackTrace();
         }
     }
 
-    public boolean isRunning() {
-        return !stop;
+    public final boolean isRunning() {
+        return !stop.get();
     }
     
     static class Client {
-        final InetAddress address;
+        final String host;
         final int port;
+        final byte[] key;
         DataOutputStream out;
-        Client(String name, int port) throws UnknownHostException {
-            this.address = InetAddress.getByName(name);
+        Client(String host, int port, byte[] key) throws UnknownHostException {
+            this.host = host;
             this.port = port;
+            this.key = key;
         }
         void send(byte[] data) {
             DataOutputStream o = out;
@@ -314,9 +424,15 @@ e.printStackTrace();
                 }
             }
         }
-        void tryConnect(byte[] key) {
+        void tryConnect() {
             DataOutputStream o = out;
-            if (o != null || address == null) {
+            if (o != null || host == null) {
+                return;
+            }
+            InetAddress address;
+            try {
+                address = InetAddress.getByName(host);
+            } catch (UnknownHostException e1) {
                 return;
             }
             Socket socket = new Socket();

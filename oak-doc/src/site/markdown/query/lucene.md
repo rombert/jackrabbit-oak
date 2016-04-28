@@ -95,6 +95,7 @@ Below is the canonical index definition structure
       - compatVersion (long) = 2
       - includedPaths (string) multiple
       - excludedPaths (string) multiple
+      - queryPaths (string) multiple = ['/']
       - indexPath (string)
       - codec (string)
       + indexRules (nt:unstructured)
@@ -129,6 +130,11 @@ includedPaths
 excludedPaths
 : Optional multi value property. Defaults to empty
 : List of paths which should be [excluded](#include-exclude) from indexing. 
+
+queryPaths
+: Optional multi value property. Defaults to '/'
+: List of paths for which the index can be used to perform queries. Refer to
+[Path Includes/Excludes](#include-exclude) for more details
 
 indexPath
 : Optional string property to specify [index path](#copy-on-write)
@@ -355,7 +361,7 @@ nullCheckEnabled
 
   Refer to [IS NULL support][OAK-2517] for more details
 
-**Property Names**
+<a name="property-names"></a>**Property Names**
 
 Property name can be one of following
 
@@ -369,6 +375,10 @@ Property name can be one of following
    _jcr:content/metadata/dc:.*$_
    which indexes all property names starting with _dc_ from node with
    relative path _jcr:content/metadata_
+4. The string `:nodeName` - this special case indexes node name as if it's a
+   virtual property of the node being indexed. Setting this along with
+   `nodeScopeIndex=true` is akin to setting `indexNodeName=true` on indexing
+   rule. (`@since Oak 1.3.15, 1.2.14`)
 
 <a name="path-restrictions"></a>
 ##### Evaluate Path Restrictions
@@ -412,6 +422,45 @@ In majority of case `excludedPaths` only makes sense. However in some cases
 it might be required to also specify explicit set of path which should be 
 indexed. In that case make use of `includedPaths`
 
+Note that `excludedPaths` and `includedPaths` *does not* affect the index
+selection logic for a query i.e. if a query has any path restriction specified
+then that would not be checked against the `excludedPaths` and `includedPaths`.
+
+<a name="query-paths"></a>
+**queryPaths**
+
+If you need to ensure that a given index only gets used for query with specific
+path restrictions then you need to specify those paths in `queryPaths`. 
+
+For example if `includedPaths` and `queryPaths` are set to _[ "/content/a", "/content/b" ]_. 
+The index would be used for queries below "/content/a" as well as for queries below 
+"/content/b". But not for queries without path restriction, or for queries below 
+"/content/c".
+
+**Usage**
+
+Key points to consider while using `excludedPaths`, `includedPaths` and `queryPaths`
+
+1. Reduce what gets indexed in global fulltext index - For 
+   setups where a global fulltext index is configured say at /oak:index/lucene which
+   indexes everything then `excludedPaths` can be used to avoid indexing transient
+   repository state like in '/var' or '/tmp'. This would help in improving indexing 
+   rate. By far this is the primary usecase
+   
+2. Reduce reindexing time - If its known that certain type of data is stored under specific
+   subtree only but the query is not specifying that path restriction then `includedPaths`
+   can be used to reduce reindexing time for existing content by ensuring that indexing
+   logic only traverses that path for building up the index
+   
+3. Use `excludedPaths`, `includedPaths` with caution - When paths are excluded or included
+   then query engine is not aware of that. If wrong paths get excluded then its possible
+   that nodes which should have been part of query result get excluded as they are not indexed.
+   So only exclude those paths which do not have node matching given nodeType or nodes which
+   are known to be not part of any query result
+
+In most cases use of `queryPaths` would not be required as index definition should not have
+any overlap. 
+    
 Refer to [OAK-2599][OAK-2599] for more details.
 
 <a name="aggregation"></a>
@@ -951,7 +1000,11 @@ properties terms to be used for suggestions will be taken.
  
 Once the above configuration has been done, by default, the Lucene suggester is 
 updated every 10 minutes but that can be changed by setting the property 
-`suggestUpdateFrequencyMinutes` in the index definition node to a different value.
+`suggestUpdateFrequencyMinutes` in `suggestion` node under the index definition
+node to a different value.
+_Note that up till Oak 1.3.14/1.2.14, `suggestUpdateFrequencyMinutes` was to be setup at
+index definition node itself. That is is still supported for backward compatibility,
+but having a separate `suggestion` node is preferred._
 
 Sample configuration for suggestions based on terms contained in `jcr:description` 
 property.
@@ -962,7 +1015,8 @@ property.
   - compatVersion = 2
   - type = "lucene"
   - async = "async"
-  - suggestUpdateFrequencyMinutes = 60
+  + suggestion
+    - suggestUpdateFrequencyMinutes = 20
   + indexRules
     - jcr:primaryType = "nt:unstructured"
     + nt:base
@@ -974,7 +1028,7 @@ property.
           - useInSuggest = true
 ```
 
-`@since Oak 1.3.12` the index Analyzer can be used to perform a have more fine grained suggestions, e.g. single words 
+`@since Oak 1.3.12, 1.2.14` the index Analyzer can be used to perform a have more fine grained suggestions, e.g. single words 
 (whereas default suggest configuration returns entire property values, see [OAK-3407]: https://issues.apache.org/jira/browse/OAK-3407).
 Analyzed suggestions can be enabled by setting "suggestAnalyzed" property to true, e.g.:
 
@@ -984,10 +1038,27 @@ Analyzed suggestions can be enabled by setting "suggestAnalyzed" property to tru
   - compatVersion = 2
   - type = "lucene"
   - async = "async"
-  - suggestUpdateFrequencyMinutes = 60
-  - suggestAnalyzed = true
+  + suggestion
+    - suggestUpdateFrequencyMinutes = 20
+    - suggestAnalyzed = true
 ```
+_Note that up till Oak 1.3.14/1.2.14, `suggestAnalyzed` was to be setup at index definition node itself. That is is still
+supported for backward compatibility, but having a separate `suggestion` node is preferred._
 
+Setting up `useInSuggest=true` for a property definition having `name=:nodeName` would add node names to
+suggestion dictionary (See [property name](#property-names) for node name indexing)
+
+Since, Oak 1.3.16/1.2.14, very little support exists for queries with `ISDESCENDANTNODE` constraint to subset suggestions
+on a sub-tree.  It requires `evaluatePathRestrictions=true` on index definition. e.g.
+```
+SELECT rep:suggest() FROM [nt:base] WHERE SUGGEST('test') AND ISDESCENDANTNODE('/a/b')
+```
+or
+```
+/jcr:root/a/b//[rep:suggest('in 201')]/(rep:suggest())
+```
+Note, the subset is done by filtering top 10 suggestions. So, it's possible to get no suggestions for a subtree query,
+if top 10 suggestions are not part of that subtree. For details look at [OAK-3994] and related issues.
 
 #### Spellchecking
 
@@ -1002,7 +1073,7 @@ properties terms to be used for spellcheck corrections will be taken.
 Sample configuration for spellchecking based on terms contained in `jcr:title` 
 property.
 
-Since Oak 1.3.11, the each suggestion would be returned per row.
+Since Oak 1.3.11/1.2.14, the each suggestion would be returned per row.
 
 ```
 /oak:index/lucene-spellcheck
@@ -1021,6 +1092,56 @@ Since Oak 1.3.11, the each suggestion would be returned per row.
           - useInSpellcheck = true
 ```
 
+Since, Oak 1.3.16/1.2.14, very little support exists for queries with `ISDESCENDANTNODE` constraint to subset suggestions
+on a sub-tree. It requires `evaluatePathRestrictions=true` on index definition. e.g.
+```
+SELECT rep:suggest() FROM [nt:base] WHERE SUGGEST('test') AND ISDESCENDANTNODE('/a/b')
+```
+or
+```
+/jcr:root/a/b//[rep:suggest('in 201')]/(rep:suggest())
+```
+Note, the subset is done by filtering top 10 spellchecks. So, it's possible to get no results for a subtree query,
+if top 10 spellchecks are not part of that subtree. For details look at [OAK-3994] and related issues.
+
+#### Facets
+
+`@since Oak 1.3.14`
+
+Lucene property indexes can also be used for retrieving facets, in order to do so the property _facets_ must be set to 
+ _true_ on the property definition.
+
+```
+/oak:index/lucene-with-facets
+  - jcr:primaryType = "oak:QueryIndexDefinition"
+  - compatVersion = 2
+  - type = "lucene"
+  - async = "async"
+  + indexRules
+    - jcr:primaryType = "nt:unstructured"
+    + nt:base
+      + properties
+        - jcr:primaryType = "nt:unstructured"
+        + jcr:title
+          - facets = true
+          - propertyIndex = true
+``` 
+
+Specific facet related features for Lucene property index can be configured in a separate _facets_ node below the
+ index definition.
+ By default ACL checks are always performed on facets by the Lucene property index however this can be avoided by setting
+ the property _secure_ to _false_ in the _facets_ configuration node.
+```
+    + nt:base
+      + properties
+        - jcr:primaryType = "nt:unstructured"
+        + jcr:title
+          - facets = true
+          - propertyIndex = true
+          + facets
+            - secure = false
+```
+
 
 #### Score Explanation
 
@@ -1030,6 +1151,15 @@ Lucene supports [explanation of scores][score-explanation] which can be selected
 e.g. `select [oak:scoreExplanation], * from [nt:base] where foo='bar'`
 
 _Note that showing explanation score is expensive. So, this feature should be used for debug purposes only_.
+
+
+#### Custom hooks
+
+`@since Oak 1.3.14`
+
+In OSGi enviroment, implementations of `IndexFieldProvider` and `FulltextQueryTermsProvider` under
+`org.apache.jackrabbit.oak.plugins.index.lucene.spi` (see javadoc [here][oak-lucene]) are called during indexing
+and querying as documented in javadocs.
 
 ### Design Considerations
 
@@ -1072,6 +1202,14 @@ While defining the index definition do consider the following aspects
     only those properties. So `ordering`  should be enabled only when sorting is
     being performed for those properties and `evaluatePathRestrictions` should
     only be enabled if you are going to specify path restrictions.
+    
+8. **Avoid overlapping index definition** - Do not have overlapping index definition 
+    indexing same nodetype but having different `includedPaths` and `excludedPaths`.
+    Index selection logic does not make use of the `includedPaths` and `excludedPaths` 
+    for index selection. Index selection is done only on cost basis and `queryPaths`. 
+    Having multiple definition for same type would cause ambiguity in index selection 
+    and may lead to unexpected results. Instead have a single index definition for same 
+    type.
    
 Following analogy might be helpful to people coming from RDBMS world. Treat your
 nodetype as Table in your DB and all the direct or relative properties as columns
@@ -1445,6 +1583,7 @@ such fields
 [OAK-2853]: https://issues.apache.org/jira/browse/OAK-2853
 [OAK-2892]: https://issues.apache.org/jira/browse/OAK-2892
 [OAK-3367]: https://issues.apache.org/jira/browse/OAK-3367
+[OAK-3994]: https://issues.apache.org/jira/browse/OAK-3394
 [luke]: https://code.google.com/p/luke/
 [tika]: http://tika.apache.org/
 [oak-console]: https://github.com/apache/jackrabbit-oak/tree/trunk/oak-run#console
@@ -1457,3 +1596,4 @@ such fields
 [jcr-contains]: http://www.day.com/specs/jcr/1.0/6.6.5.2_jcr_contains_Function.html
 [boost-faq]: https://wiki.apache.org/lucene-java/LuceneFAQ#How_do_I_make_sure_that_a_match_in_a_document_title_has_greater_weight_than_a_match_in_a_document_body.3F
 [score-explanation]: https://lucene.apache.org/core/4_6_0/core/org/apache/lucene/search/IndexSearcher.html#explain%28org.apache.lucene.search.Query,%20int%29
+[oak-lucene]: http://www.javadoc.io/doc/org.apache.jackrabbit/oak-lucene/

@@ -63,11 +63,11 @@ import org.apache.commons.math3.exception.util.LocalizedFormats;
 import org.apache.jackrabbit.api.JackrabbitRepository;
 import org.apache.jackrabbit.oak.fixture.DocumentMongoFixture;
 import org.apache.jackrabbit.oak.fixture.NodeStoreFixture;
-import org.apache.jackrabbit.oak.fixture.SegmentFixture;
 import org.apache.jackrabbit.oak.jcr.session.RefreshStrategy;
 import org.apache.jackrabbit.oak.plugins.document.DocumentNodeStore;
 import org.apache.jackrabbit.oak.plugins.segment.SegmentStore;
 import org.apache.jackrabbit.oak.plugins.segment.file.FileStore;
+import org.apache.jackrabbit.oak.plugins.segment.fixture.SegmentFixture;
 import org.apache.jackrabbit.oak.spi.state.NodeStore;
 import org.junit.After;
 import org.junit.Before;
@@ -136,7 +136,7 @@ public class LargeOperationIT {
     @Parameterized.Parameters
     public static Collection<Object[]> fixtures() throws IOException {
         File file = new File(new File("target"), "tar." + System.nanoTime());
-        SegmentStore segmentStore = new FileStore(file, 266, true);
+        SegmentStore segmentStore = FileStore.builder(file).withMaxFileSize(256).withMemoryMapping(true).build();
 
         List<Object[]> fixtures = Lists.newArrayList();
         SegmentFixture segmentFixture = new SegmentFixture(segmentStore);

@@ -378,7 +378,7 @@ public class MultiplexingDocumentStore implements DocumentStore {
     }
 
     @Override
-    public CacheStats getCacheStats() {
+    public Iterable<CacheStats> getCacheStats() {
         // TODO return aggregate stats
         return null;
     }

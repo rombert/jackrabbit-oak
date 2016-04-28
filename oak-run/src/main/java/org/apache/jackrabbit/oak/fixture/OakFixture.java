@@ -61,7 +61,7 @@ public abstract class OakFixture {
         this.unique = getUniqueDatabaseName(name);
     }
 
-    private static String getUniqueDatabaseName(String name) {
+    public static String getUniqueDatabaseName(String name) {
         return String.format("%s-%d", name, System.currentTimeMillis());
     }
 
@@ -112,9 +112,21 @@ public abstract class OakFixture {
         };
     }
 
+    public static OakFixture getMongo(String uri,
+                                      boolean dropDBAfterTest, long cacheSize) {
+        return getMongo(OAK_MONGO, uri,
+                dropDBAfterTest, cacheSize, false, null, 0);
+    }
+
     public static OakFixture getMongo(String host, int port, String database,
                                       boolean dropDBAfterTest, long cacheSize) {
         return getMongo(OAK_MONGO, host, port, database,
+                dropDBAfterTest, cacheSize, false, null, 0);
+    }
+
+    public static OakFixture getMongoNS(String uri,
+                                      boolean dropDBAfterTest, long cacheSize) {
+        return getMongo(OAK_MONGO_NS, uri,
                 dropDBAfterTest, cacheSize, false, null, 0);
     }
 
@@ -333,8 +345,12 @@ public abstract class OakFixture {
 
         @Override
         public Oak getOak(int clusterId) throws Exception {
-            FileStore fs = new FileStore(base, maxFileSizeMB, cacheSizeMB, memoryMapping);
-            return newOak(new SegmentNodeStore(fs));
+            FileStore fs = FileStore.builder(base)
+                    .withMaxFileSize(maxFileSizeMB)
+                    .withCacheSize(cacheSizeMB)
+                    .withMemoryMapping(memoryMapping)
+                    .build();
+            return newOak(SegmentNodeStore.builder(fs).build());
         }
 
         @Override
@@ -352,11 +368,14 @@ public abstract class OakFixture {
                     blobStore = blobStoreFixtures[i].setUp();
                 }
 
-                stores[i] = new FileStore(blobStore,
-                        new File(base, unique),
-                        EmptyNodeState.EMPTY_NODE,
-                        maxFileSizeMB, cacheSizeMB, memoryMapping);
-                cluster[i] = newOak(new SegmentNodeStore(stores[i]));
+                stores[i] = FileStore.builder(new File(base, unique))
+                        .withBlobStore(blobStore)
+                        .withRoot(EmptyNodeState.EMPTY_NODE)
+                        .withMaxFileSize(maxFileSizeMB)
+                        .withCacheSize(cacheSizeMB)
+                        .withMemoryMapping(memoryMapping)
+                        .build();
+                cluster[i] = newOak(SegmentNodeStore.builder(stores[i]).build());
             }
             return cluster;
         }

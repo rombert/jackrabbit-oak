@@ -108,7 +108,7 @@ class NoopStore implements DocumentStore {
     }
 
     @Override
-    public CacheStats getCacheStats() {
+    public Iterable<CacheStats> getCacheStats() {
         return null;
     }
 

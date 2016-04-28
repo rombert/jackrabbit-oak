@@ -414,7 +414,7 @@ public class DataStoreBlobStore implements DataStore, SharedDataStore, BlobStore
                     dataRecord.getLastModified(), success);
                 if (success) {
                     ((MultiDataStoreAware) delegate).deleteRecord(identifier);
-                    log.trace("Deleted blob [{}]", blobId);
+                    log.info("Deleted blob [{}]", blobId);
                     count++;
                 }
             }
@@ -424,7 +424,10 @@ public class DataStoreBlobStore implements DataStore, SharedDataStore, BlobStore
 
     @Override
     public Iterator<String> resolveChunks(String blobId) throws IOException {
-        return Iterators.singletonIterator(blobId);
+        if (!InMemoryDataRecord.isInstance(blobId)) {
+            return Iterators.singletonIterator(blobId);
+        }
+        return Iterators.emptyIterator();
     }
 
     @Override

@@ -50,6 +50,7 @@ import javax.management.StandardMBean;
 import javax.security.auth.login.LoginException;
 
 import com.google.common.base.Function;
+import com.google.common.base.Supplier;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Lists;
 import com.google.common.io.Closer;
@@ -64,6 +65,7 @@ import org.apache.jackrabbit.oak.api.jmx.RepositoryManagementMBean;
 import org.apache.jackrabbit.oak.commons.concurrent.ExecutorCloser;
 import org.apache.jackrabbit.oak.core.ContentRepositoryImpl;
 import org.apache.jackrabbit.oak.management.RepositoryManager;
+import org.apache.jackrabbit.oak.plugins.atomic.AtomicCounterEditorProvider;
 import org.apache.jackrabbit.oak.plugins.commit.ConflictHook;
 import org.apache.jackrabbit.oak.plugins.index.AsyncIndexUpdate;
 import org.apache.jackrabbit.oak.plugins.index.CompositeIndexEditorProvider;
@@ -332,6 +334,8 @@ public class Oak {
      */
     private Map<String, Long> asyncTasks;
 
+    private boolean failOnMissingIndexProvider;
+
     public Oak(NodeStore store) {
         this.store = checkNotNull(store);
     }
@@ -549,6 +553,39 @@ public class Oak {
         return withAsyncIndexing("async", 5);
     }
 
+    public Oak withFailOnMissingIndexProvider(){
+        failOnMissingIndexProvider = true;
+        return this;
+    }
+
+    public Oak withAtomicCounter() {
+        return with(new AtomicCounterEditorProvider(
+            new Supplier<Clusterable>() {
+                @Override
+                public Clusterable get() {
+                    return clusterable;
+                }
+            },
+            new Supplier<ScheduledExecutorService>() {
+                @Override
+                public ScheduledExecutorService get() {
+                    return scheduledExecutor;
+                }
+            }, 
+            new Supplier<NodeStore>() {
+                @Override
+                public NodeStore get() {
+                    return store;
+                }
+            },
+            new Supplier<Whiteboard>() {
+                @Override
+                public Whiteboard get() {
+                    return whiteboard;
+                }
+            }));
+    }
+    
     /**
      * <p>
      * Enable the asynchronous (background) indexing behavior for the provided
@@ -612,6 +649,7 @@ public class Oak {
                 AsyncIndexUpdate task = new AsyncIndexUpdate(t.getKey(), store,
                         indexEditors);
                 indexRegistration.registerAsyncIndexer(task, t.getValue());
+                closer.register(task);
             }
 
             PropertyIndexAsyncReindex asyncPI = new PropertyIndexAsyncReindex(
@@ -642,7 +680,7 @@ public class Oak {
                 workspaceInitializers, store, defaultWorkspaceName, indexEditors);
 
         // add index hooks later to prevent the OakInitializer to do excessive indexing
-        with(new IndexUpdateProvider(indexEditors));
+        with(new IndexUpdateProvider(indexEditors, failOnMissingIndexProvider));
         withEditorHook();
 
         // Register observer last to prevent sending events while initialising

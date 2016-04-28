@@ -26,6 +26,8 @@ The following runmodes are currently available:
     * garbage         : Identifies blob garbage on a DocumentMK repository
     * tarmkdiff       : Show changes between revisions on TarMk
     * tarmkrecovery   : Lists candidates for head journal entries
+    * dumpdatastorerefs : Dump all the blob references used to a file 
+    * resetclusterid  : Resets the cluster id   
     * help            : Print a list of available runmodes
     
 
@@ -37,18 +39,25 @@ See the subsections below for more details on how to use these modes.
 Backup
 ------
 
-The 'backup' mode creates a backup from an existing oak repository. To start this mode, use:
+The 'backup' mode creates a backup from an existing oak repository. The most efficient 
+way to backup the TarMK repository is to use a file system copy of the repository folder.
+The current backup implementation acts like a compaction to an enternal folder, on top of 
+copying the state, it will also try to compress it, so it will significantly slower than 
+what one might expect from a simple copy backup. Incremental backups (backup over an existing
+backup will still need to perform a full content diff) and will attempt to compact the diff.
+All optimisation flags used for offline compaction very much apply for this case as well.
+The FileStore backup doesn't need access to the DataStore, but if one is usually configured with
+the repository, it will need the following system property set to true in order to be able to
+perform the diffing `-Doak.backup.UseFakeBlobStore=true`. To start this mode, use:
 
-    $ java -jar oak-run-*.jar backup \
-          { /path/to/oak/repository | mongodb://host:port/database } /path/to/backup
+    $ java -jar oak-run-*.jar backup /path/to/oak/repository /path/to/backup
 
 Restore
 -------
 
 The 'restore' mode imports a backup of an existing oak repository. To start this mode, use:
 
-    $ java -jar oak-run-*.jar restore \
-          { /path/to/oak/repository | mongodb://host:port/database } /path/to/backup
+    $ java -jar oak-run-*.jar restore /path/to/oak/repository /path/to/backup
 
 Debug
 -----
@@ -76,6 +85,11 @@ To start the console for a DocumentMK/RDB repository, use:
 
     $ java -jar oak-run-*.jar --rdbjdbcuser username --rdbjdbcpasswd password console jdbc:...
     
+To start the console connecting to a DocumentMK repository in read-only mode, use either of:
+
+    $ java -jar oak-run-*.jar console --read-only mongodb://host
+    $ java -jar oak-run-*.jar console --read-only --rdbjdbcuser username --rdbjdbcpasswd password console jdbc:...
+
 Console is based on [Groovy Shell](http://groovy.codehaus.org/Groovy+Shell) and hence one 
 can use all Groovy constructs. It also exposes the `org.apache.jackrabbit.oak.console.ConsoleSession`
 instance as through `session` variable. For example when using SegmentNodeStore you can 
@@ -122,6 +136,9 @@ a negative offset translating all timestamps into a valid int range.
                        given)
     --output <File>  Output file (default: segments.gdf)
     --gc             Write the gc generation graph instead of the full graph
+    --pattern        Regular exception specifying which
+                       nodes to include (optional). Ignore
+                       when --gc is specified.
 
 History
 -------
@@ -213,7 +230,14 @@ Compact
 The 'compact' mode runs the segment compaction operation on the provided TarMK
 repository. To start this mode, use:
 
-    $ java -jar oak-run-*.jar compact /path/to/TarMK
+    $ java -jar oak-run-*.jar compact [path] <options>
+
+    [File] -- Path to segment store (required)
+
+    Option   Description
+    ------   -----------
+    --force  Force compaction and ignore non
+               matching segment version
 
 Checkpoints
 -----------
@@ -442,6 +466,7 @@ The following benchmark options (with default values) are currently supported:
     --host localhost       - MongoDB host
     --port 27101           - MongoDB port
     --db <name>            - MongoDB database (default is a generated name)
+    --mongouri             - MongoDB URI (takes precedence over host, port and db)
     --dropDBAfterTest true - Whether to drop the MongoDB database after the test
     --base target          - Path to the base file (Tar setup),
     --mmap <64bit?>        - TarMK memory mapping (the default on 64 bit JVMs)
@@ -945,6 +970,25 @@ The following options are available:
 
     --version-v10           - Uses V10 version repository reading (see OAK-2527)
 
+Oak Dump DataStore References
+-----------------------------
+
+Dumps all the DataStore/BlobStore references used. Use the following commmand
+
+    $ java -jar oak-run-*.jar dumpdatastorerefs \
+            { /path/to/oak/repository | mongodb://host:port/database } [/path/to/dump]
+
+This will create a dump file with name starting with 'marked-'.The dump path is optional and if not specified the file will be created in the user tmp directory.
+
+Reset Cluster Id
+---------------
+
+Resets the cluster id generated internally. Use the following command after stopping the server
+
+    $ java -jar oak-run-*.jar resetclusterid \
+            { /path/to/oak/repository | mongodb://host:port/database }
+
+The cluster id will be removed and will be generated on next server start up.
 
 License
 -------

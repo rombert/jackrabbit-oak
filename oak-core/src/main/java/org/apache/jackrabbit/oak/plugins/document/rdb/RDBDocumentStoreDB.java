@@ -50,17 +50,22 @@ public enum RDBDocumentStoreDB {
         public String checkVersion(DatabaseMetaData md) throws SQLException {
             return RDBJDBCTools.versionCheck(md, 1, 4, description);
         }
+
+        @Override
+        public String getInitializationStatement() {
+            return "create alias if not exists unix_timestamp as $$ long unix_timestamp() { return System.currentTimeMillis()/1000L; } $$;";
+        }
+
+        @Override
+        public String getCurrentTimeStampInSecondsSyntax() {
+            return "select unix_timestamp()";
+        }
     },
 
     DERBY("Apache Derby") {
         @Override
         public String checkVersion(DatabaseMetaData md) throws SQLException {
             return RDBJDBCTools.versionCheck(md, 10, 11, description);
-        }
-
-        @Override
-        public String getCurrentTimeStampInMsSyntax() {
-            return "CURRENT_TIMESTAMP";
         }
 
         @Override
@@ -72,7 +77,37 @@ public enum RDBDocumentStoreDB {
     POSTGRES("PostgreSQL") {
         @Override
         public String checkVersion(DatabaseMetaData md) throws SQLException {
-            return RDBJDBCTools.versionCheck(md, 9, 3, description);
+            String result = RDBJDBCTools.versionCheck(md, 9, 5, 9, 4, description);
+
+            if (result.isEmpty()) {
+                // special case: we need 9.4.1208 or newer (see OAK-3977)
+                if (md.getDriverMajorVersion() == 9 && md.getDriverMinorVersion() == 4) {
+                    String versionString = md.getDriverVersion();
+                    String scanfor = "9.4.";
+                    int p = versionString.indexOf(scanfor);
+                    if (p >= 0) {
+                        StringBuilder build = new StringBuilder();
+                        for (char c : versionString.substring(p + scanfor.length()).toCharArray()) {
+                            if (c >= '0' && c <= '9') {
+                                build.append(c);
+                            } else {
+                                break;
+                            }
+                        }
+                        if (Integer.parseInt(build.toString()) < 1208) {
+                            result = "Unsupported " + description + " driver version: " + md.getDriverVersion() + ", found build "
+                                    + build + ", but expected at least build 1208";
+                        }
+                    }
+                }
+            }
+
+            return result;
+        }
+
+        @Override
+        public String getCurrentTimeStampInSecondsSyntax() {
+            return "select extract(epoch from now())::integer";
         }
 
         @Override
@@ -113,6 +148,11 @@ public enum RDBDocumentStoreDB {
         @Override
         public String checkVersion(DatabaseMetaData md) throws SQLException {
             return RDBJDBCTools.versionCheck(md, 10, 1, description);
+        }
+
+        @Override
+        public String getCurrentTimeStampInSecondsSyntax() {
+            return "select cast (days(current_timestamp - current_timezone) - days('1970-01-01') as integer) * 86400 + midnight_seconds(current_timestamp - current_timezone) from sysibm.sysdummy1";
         }
 
         public String getTableCreationStatement(String tableName) {
@@ -178,7 +218,12 @@ public enum RDBDocumentStoreDB {
     ORACLE("Oracle") {
         @Override
         public String checkVersion(DatabaseMetaData md) throws SQLException {
-            return RDBJDBCTools.versionCheck(md, 12, 1, description);
+            return RDBJDBCTools.versionCheck(md, 12, 1, 12, 1, description);
+        }
+
+        @Override
+        public String getCurrentTimeStampInSecondsSyntax() {
+            return "select (trunc(sys_extract_utc(systimestamp)) - to_date('01/01/1970', 'MM/DD/YYYY')) * 24 * 60 * 60 + to_number(to_char(sys_extract_utc(systimestamp), 'SSSSS')) from dual";
         }
 
         @Override
@@ -225,6 +270,11 @@ public enum RDBDocumentStoreDB {
         @Override
         public String checkVersion(DatabaseMetaData md) throws SQLException {
             return RDBJDBCTools.versionCheck(md, 5, 5, description);
+        }
+
+        @Override
+        public String getCurrentTimeStampInSecondsSyntax() {
+            return "select unix_timestamp()";
         }
 
         @Override
@@ -328,8 +378,8 @@ public enum RDBDocumentStoreDB {
         }
 
         @Override
-        public String getCurrentTimeStampInMsSyntax() {
-            return "CURRENT_TIMESTAMP";
+        public String getCurrentTimeStampInSecondsSyntax() {
+            return "select datediff(second, dateadd(second, datediff(second, getutcdate(), getdate()), '1970-01-01'), getdate())";
         }
 
         @Override
@@ -392,10 +442,13 @@ public enum RDBDocumentStoreDB {
     }
 
     /**
-     * Query syntax for current time in ms
+     * Query syntax for current time in ms since the epoch
+     * 
+     * @return the query syntax or empty string when no such syntax is available
      */
-    public String getCurrentTimeStampInMsSyntax() {
-        return "CURRENT_TIMESTAMP(4)";
+    public String getCurrentTimeStampInSecondsSyntax() {
+        // unfortunately, we don't have a portable statement for this
+        return "";
     }
 
     /**

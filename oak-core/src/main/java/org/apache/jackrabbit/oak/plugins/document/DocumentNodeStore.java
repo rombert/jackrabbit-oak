@@ -22,6 +22,8 @@ import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.collect.Iterables.filter;
 import static com.google.common.collect.Iterables.toArray;
 import static com.google.common.collect.Iterables.transform;
+import static com.google.common.collect.Lists.newArrayList;
+import static com.google.common.collect.Lists.reverse;
 import static java.util.Collections.singletonList;
 import static org.apache.jackrabbit.oak.commons.PathUtils.concat;
 import static org.apache.jackrabbit.oak.plugins.document.Collection.JOURNAL;
@@ -62,6 +64,7 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 import javax.annotation.CheckForNull;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
+import javax.jcr.PropertyType;
 import javax.management.NotCompliantMBeanException;
 
 import com.google.common.base.Function;
@@ -71,7 +74,6 @@ import com.google.common.base.Supplier;
 import com.google.common.base.Suppliers;
 import com.google.common.cache.Cache;
 import com.google.common.collect.Iterables;
-import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
 import com.google.common.util.concurrent.UncheckedExecutionException;
@@ -81,8 +83,11 @@ import org.apache.jackrabbit.oak.commons.jmx.AnnotatedStandardMBean;
 import org.apache.jackrabbit.oak.plugins.blob.BlobStoreBlob;
 import org.apache.jackrabbit.oak.plugins.blob.MarkSweepGarbageCollector;
 import org.apache.jackrabbit.oak.plugins.blob.ReferencedBlob;
+import org.apache.jackrabbit.oak.plugins.document.Branch.BranchCommit;
 import org.apache.jackrabbit.oak.plugins.document.cache.CacheInvalidationStats;
 import org.apache.jackrabbit.oak.plugins.document.persistentCache.PersistentCache;
+import org.apache.jackrabbit.oak.plugins.document.persistentCache.broadcast.DynamicBroadcastConfig;
+import org.apache.jackrabbit.oak.plugins.document.util.ReadOnlyDocumentStoreWrapperFactory;
 import org.apache.jackrabbit.oak.spi.blob.BlobStore;
 import org.apache.jackrabbit.oak.commons.json.JsopStream;
 import org.apache.jackrabbit.oak.commons.json.JsopWriter;
@@ -357,6 +362,23 @@ public final class DocumentNodeStore
         }
     };
 
+    /**
+     * A predicate, which takes a String and returns {@code true} if the String
+     * is a serialized binary value of a {@link DocumentPropertyState}. The
+     * apply method will throw an IllegalArgumentException if the String is
+     * malformed.
+     */
+    private final Predicate<String> isBinary = new Predicate<String>() {
+        @Override
+        public boolean apply(@Nullable String input) {
+            if (input == null) {
+                return false;
+            }
+            return new DocumentPropertyState(DocumentNodeStore.this,
+                    "p", input).getType().tag() == PropertyType.BINARY;
+        }
+    };
+
     private final Clock clock;
 
     private final Checkpoints checkpoints;
@@ -377,6 +399,8 @@ public final class DocumentNodeStore
 
     private final DocumentNodeStoreMBean mbean;
 
+    private final boolean readOnlyMode;
+
     public DocumentNodeStore(DocumentMK.Builder builder) {
         this.blobStore = builder.getBlobStore();
         if (builder.isUseSimpleRevision()) {
@@ -389,13 +413,23 @@ public final class DocumentNodeStore
         if (builder.getLogging()) {
             s = new LoggingDocumentStoreWrapper(s);
         }
+        if (builder.getReadOnlyMode()) {
+            s = ReadOnlyDocumentStoreWrapperFactory.getInstance(s);
+            readOnlyMode = true;
+        } else {
+            readOnlyMode = false;
+        }
         this.changes = Collection.JOURNAL.newDocument(s);
         this.executor = builder.getExecutor();
         this.clock = builder.getClock();
 
         int cid = builder.getClusterId();
         cid = Integer.getInteger("oak.documentMK.clusterId", cid);
-        clusterNodeInfo = ClusterNodeInfo.getInstance(s, cid);
+        if (readOnlyMode) {
+            clusterNodeInfo = ClusterNodeInfo.getReadOnlyInstance(s);
+        } else {
+            clusterNodeInfo = ClusterNodeInfo.getInstance(s, cid);
+        }
         // TODO we should ensure revisions generated from now on
         // are never "older" than revisions already in the repository for
         // this cluster id
@@ -405,6 +439,7 @@ public final class DocumentNodeStore
             s = new LeaseCheckDocumentStoreWrapper(s, clusterNodeInfo);
             clusterNodeInfo.setLeaseFailureHandler(builder.getLeaseFailureHandler());
         }
+
         this.store = s;
         this.clusterId = cid;
         this.branches = new UnmergedBranches();
@@ -463,12 +498,16 @@ public final class DocumentNodeStore
                 throw new IllegalStateException("Root document does not exist");
             }
         } else {
-            checkLastRevRecovery();
+            if (!readOnlyMode) {
+                checkLastRevRecovery();
+            }
             initializeRootState(rootDoc);
             // check if _lastRev for our clusterId exists
             if (!rootDoc.getLastRev().containsKey(clusterId)) {
                 unsavedLastRevisions.put("/", getRoot().getRevision().getRevision(clusterId));
-                backgroundWrite();
+                if (!readOnlyMode) {
+                    backgroundWrite();
+                }
             }
         }
 
@@ -492,7 +531,9 @@ public final class DocumentNodeStore
         backgroundUpdateThread.setDaemon(true);
 
         backgroundReadThread.start();
-        backgroundUpdateThread.start();
+        if (!readOnlyMode) {
+            backgroundUpdateThread.start();
+        }
 
         leaseUpdateThread = new Thread(new BackgroundLeaseUpdate(this, isDisposed),
                 "DocumentNodeStore lease update thread " + threadNamePostfix);
@@ -501,7 +542,15 @@ public final class DocumentNodeStore
         // has higher likelihood of succeeding than other threads
         // on a very busy machine - so as to prevent lease timeout.
         leaseUpdateThread.setPriority(Thread.MAX_PRIORITY);
-        leaseUpdateThread.start();
+        if (!readOnlyMode) {
+            leaseUpdateThread.start();
+        }
+        
+        PersistentCache pc = builder.getPersistentCache();
+        if (!readOnlyMode && pc != null) {
+            DynamicBroadcastConfig broadcastConfig = new DocumentBroadcastConfig(this);
+            pc.setBroadcastConfig(broadcastConfig);
+        }
 
         this.mbean = createMBean();
         LOG.info("Initialized DocumentNodeStore with clusterNodeId: {} ({})", clusterId,
@@ -540,16 +589,18 @@ public final class DocumentNodeStore
 
         // do a final round of background operations after
         // the background thread stopped
-        try{
-            internalRunBackgroundUpdateOperations();
-        } catch(AssertionError ae) {
-            // OAK-3250 : when a lease check fails, subsequent modifying requests
-            // to the DocumentStore will throw an AssertionError. Since as a result
-            // of a failing lease check a bundle.stop is done and thus a dispose of the
-            // DocumentNodeStore happens, it is very likely that in that case 
-            // you run into an AssertionError. We should still continue with disposing
-            // though - thus catching and logging..
-            LOG.error("dispose: an AssertionError happened during dispose's last background ops: "+ae, ae);
+        if (!readOnlyMode) {
+            try {
+                internalRunBackgroundUpdateOperations();
+            } catch (AssertionError ae) {
+                // OAK-3250 : when a lease check fails, subsequent modifying requests
+                // to the DocumentStore will throw an AssertionError. Since as a result
+                // of a failing lease check a bundle.stop is done and thus a dispose of the
+                // DocumentNodeStore happens, it is very likely that in that case
+                // you run into an AssertionError. We should still continue with disposing
+                // though - thus catching and logging..
+                LOG.error("dispose: an AssertionError happened during dispose's last background ops: " + ae, ae);
+            }
         }
 
         try {
@@ -577,7 +628,7 @@ public final class DocumentNodeStore
     }
 
     private String getClusterNodeInfoDisplayString() {
-        return clusterNodeInfo.toString().replaceAll("[\r\n\t]", " ").trim();
+        return (readOnlyMode?"readOnly:true, ":"") + clusterNodeInfo.toString().replaceAll("[\r\n\t]", " ").trim();
     }
 
     void setRoot(@Nonnull RevisionVector newHead) {
@@ -1154,12 +1205,14 @@ public final class DocumentNodeStore
      * Updates a commit root document.
      *
      * @param commit the updates to apply on the commit root document.
+     * @param commitRev the commit revision.
      * @return the document before the update was applied or <code>null</code>
      *          if the update failed because of a collision.
      * @throws DocumentStoreException if the update fails with an error.
      */
     @CheckForNull
-    NodeDocument updateCommitRoot(UpdateOp commit) throws DocumentStoreException {
+    NodeDocument updateCommitRoot(UpdateOp commit, Revision commitRev)
+            throws DocumentStoreException {
         // use batch commit when there are only revision and modified updates
         boolean batch = true;
         for (Map.Entry<Key, Operation> op : commit.getChanges().entrySet()) {
@@ -1171,11 +1224,63 @@ public final class DocumentNodeStore
             batch = false;
             break;
         }
-        if (batch) {
-            return batchUpdateCommitRoot(commit);
-        } else {
-            return store.findAndUpdate(NODES, commit);
+        try {
+            if (batch) {
+                return batchUpdateCommitRoot(commit);
+            } else {
+                return store.findAndUpdate(NODES, commit);
+            }
+        } catch (DocumentStoreException e) {
+            return verifyCommitRootUpdateApplied(commit, commitRev, e);
         }
+    }
+
+    /**
+     * Verifies if the {@code commit} update on the commit root was applied by
+     * reading the affected document and checks if the {@code commitRev} is
+     * set in the revisions map.
+     *
+     * @param commit the update operation on the commit root document.
+     * @param commitRev the commit revision.
+     * @param e the exception that will be thrown when this method determines
+     *          that the update was not applied.
+     * @return the before document.
+     * @throws DocumentStoreException the exception passed to this document
+     *      in case the commit update was not applied.
+     */
+    private NodeDocument verifyCommitRootUpdateApplied(UpdateOp commit,
+                                                       Revision commitRev,
+                                                       DocumentStoreException e)
+            throws DocumentStoreException {
+        LOG.info("Update of commit root failed with exception", e);
+        int numRetries = 10;
+        for (int i = 0; i < numRetries; i++) {
+            LOG.info("Checking if change made it to the DocumentStore anyway {}/{} ...",
+                    i + 1, numRetries);
+            NodeDocument commitRootDoc;
+            try {
+                commitRootDoc = store.find(NODES, commit.getId(), 0);
+            } catch (Exception ex) {
+                LOG.info("Failed to read commit root document", ex);
+                continue;
+            }
+            if (commitRootDoc == null) {
+                LOG.info("Commit root document missing for {}", commit.getId());
+                break;
+            }
+            if (commitRootDoc.getLocalRevisions().containsKey(commitRev)) {
+                LOG.info("Update made it to the store even though the call " +
+                        "failed with an exception. Previous exception will " +
+                        "be suppressed. {}", commit);
+                NodeDocument before = NODES.newDocument(store);
+                commitRootDoc.deepCopy(before);
+                UpdateUtils.applyChanges(before, commit.getReverseOperation());
+                return before;
+            }
+            break;
+        }
+        LOG.info("Update didn't make it to the store. Re-throwing the exception");
+        throw e;
     }
 
     private NodeDocument batchUpdateCommitRoot(UpdateOp commit)
@@ -1242,8 +1347,7 @@ public final class DocumentNodeStore
 
     @Nonnull
     RevisionVector reset(@Nonnull RevisionVector branchHead,
-                         @Nonnull RevisionVector ancestor,
-                         @Nullable DocumentNodeStoreBranch branch) {
+                         @Nonnull RevisionVector ancestor) {
         checkNotNull(branchHead);
         checkNotNull(ancestor);
         Branch b = getBranches().getBranch(branchHead);
@@ -1254,61 +1358,44 @@ public final class DocumentNodeStore
             throw new DocumentStoreException(branchHead + " is not the head " +
                     "of a branch");
         }
-        if (!b.containsCommit(ancestor.getBranchRevision())) {
+        if (!b.containsCommit(ancestor.getBranchRevision())
+                && !b.getBase().asBranchRevision(getClusterId()).equals(ancestor)) {
             throw new DocumentStoreException(ancestor + " is not " +
                     "an ancestor revision of " + branchHead);
         }
-        if (branchHead.equals(ancestor)) {
+        // tailSet is inclusive -> use an ancestorRev with a
+        // counter incremented by one to make the call exclusive
+        Revision ancestorRev = ancestor.getBranchRevision();
+        ancestorRev = new Revision(ancestorRev.getTimestamp(),
+                ancestorRev.getCounter() + 1, ancestorRev.getClusterId(), true);
+        List<Revision> revs = newArrayList(b.getCommits().tailSet(ancestorRev));
+        if (revs.isEmpty()) {
             // trivial
             return branchHead;
         }
-        boolean success = false;
-        Commit commit = newCommit(branchHead, branch);
-        try {
-            Iterator<Revision> it = b.getCommits().tailSet(ancestor.getBranchRevision()).iterator();
-            // first revision is the ancestor (tailSet is inclusive)
-            // do not undo changes for this revision
-            it.next();
-            Map<String, UpdateOp> operations = Maps.newHashMap();
-            if (it.hasNext()) {
-                Revision reset = it.next();
-                // TODO: correct?
-                getRoot(b.getCommit(reset).getBase().update(reset))
-                        .compareAgainstBaseState(getRoot(ancestor),
-                                new ResetDiff(reset.asTrunkRevision(), operations));
-                UpdateOp rootOp = operations.get("/");
-                if (rootOp == null) {
-                    rootOp = new UpdateOp(Utils.getIdFromPath("/"), false);
-                    NodeDocument.setModified(rootOp, commit.getRevision());
-                    operations.put("/", rootOp);
-                }
-                NodeDocument.removeCollision(rootOp, reset.asTrunkRevision());
-                NodeDocument.removeRevision(rootOp, reset.asTrunkRevision());
+        UpdateOp rootOp = new UpdateOp(Utils.getIdFromPath("/"), false);
+        // reset each branch commit in reverse order
+        Map<String, UpdateOp> operations = Maps.newHashMap();
+        for (Revision r : reverse(revs)) {
+            NodeDocument.removeCollision(rootOp, r.asTrunkRevision());
+            NodeDocument.removeRevision(rootOp, r.asTrunkRevision());
+            operations.clear();
+            BranchCommit bc = b.getCommit(r);
+            if (bc.isRebase()) {
+                continue;
             }
-            // update root document first
-            if (store.findAndUpdate(Collection.NODES, operations.get("/")) != null) {
-                // clean up in-memory branch data
-                // first revision is the ancestor (tailSet is inclusive)
-                List<Revision> revs = Lists.newArrayList(b.getCommits().tailSet(ancestor.getBranchRevision()));
-                for (Revision r : revs.subList(1, revs.size())) {
-                    b.removeCommit(r);
-                }
-                // successfully updating the root document can be considered
-                // as success because the changes are not marked as committed
-                // anymore
-                success = true;
-            }
-            operations.remove("/");
-            // update remaining documents
+            getRoot(bc.getBase().update(r))
+                    .compareAgainstBaseState(getRoot(bc.getBase()),
+                            new ResetDiff(r.asTrunkRevision(), operations));
+            // apply reset operations
             for (UpdateOp op : operations.values()) {
                 store.findAndUpdate(Collection.NODES, op);
             }
-        } finally {
-            if (!success) {
-                canceled(commit);
-            } else {
-                done(commit, true, null);
-            }
+        }
+        store.findAndUpdate(Collection.NODES, rootOp);
+        // clean up in-memory branch data
+        for (Revision r : revs) {
+            b.removeCommit(r);
         }
         return ancestor;
     }
@@ -1591,7 +1678,7 @@ public final class DocumentNodeStore
 
     /** Note: made package-protected for testing purpose, would otherwise be private **/
     void runBackgroundUpdateOperations() {
-        if (isDisposed.get()) {
+        if (readOnlyMode || isDisposed.get()) {
             return;
         }
         try {
@@ -1927,8 +2014,9 @@ public final class DocumentNodeStore
             if (doc == null) {
                 continue;
             }
-            for (UpdateOp op : doc.split(this, head)) {
 
+            for (UpdateOp op : doc.split(this, head, isBinary)) {
+                
                 // STOP LOOKING
                 op.splitFrom = doc.getId();
                 // START LOOKING AGAIN
@@ -1964,9 +2052,13 @@ public final class DocumentNodeStore
         return unsavedLastRevisions.persist(this, new UnsavedModifications.Snapshot() {
             @Override
             public void acquiring(Revision mostRecent) {
-                if (store.create(JOURNAL,
-                        singletonList(changes.asUpdateOp(mostRecent)))) {
+                if (store.create(JOURNAL, singletonList(changes.asUpdateOp(mostRecent)))) {
+                    // success: start with a new document
                     changes = JOURNAL.newDocument(getDocumentStore());
+                } else {
+                    // fail: log and keep the changes
+                    LOG.error("Failed to write to journal, accumulating changes for future write (~" + changes.getMemory()
+                            + " bytes).");
                 }
             }
         }, backgroundOperationLock.writeLock());
@@ -2190,9 +2282,10 @@ public final class DocumentNodeStore
         String diff = w.toString();
         if (debug) {
             long end = now();
-            LOG.debug("Diff performed via '{}' at [{}] between revisions [{}] => [{}] took {} ms ({} ms), diff '{}'",
+            LOG.debug("Diff performed via '{}' at [{}] between revisions [{}] => [{}] took {} ms ({} ms), diff '{}', external '{}",
                     diffAlgo, from.getPath(), fromRev, toRev,
-                    end - start, getChildrenDoneIn - start, diff);
+                    end - start, getChildrenDoneIn - start, diff,
+                    to.isFromExternalChange());
         }
         return diff;
     }

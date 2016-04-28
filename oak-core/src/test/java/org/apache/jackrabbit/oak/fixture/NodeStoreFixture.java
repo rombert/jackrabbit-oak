@@ -19,28 +19,12 @@
 
 package org.apache.jackrabbit.oak.fixture;
 
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.List;
-import java.util.Set;
-
-import org.apache.jackrabbit.oak.commons.FixturesHelper.Fixture;
 import org.apache.jackrabbit.oak.spi.state.NodeStore;
 
 /**
  * NodeStore fixture for parametrized tests.
  */
 public abstract class NodeStoreFixture {
-
-    public static final NodeStoreFixture MEMORY_NS = new MemoryFixture();
-
-    public static final NodeStoreFixture SEGMENT_MK = new SegmentFixture();
-
-    public static final NodeStoreFixture DOCUMENT_NS = new DocumentMongoFixture();
-
-    public static final NodeStoreFixture DOCUMENT_RDB = new DocumentRdbFixture();
-    
-    public static final NodeStoreFixture MEMORY_MULTI_NS = new MultiplexedMemoryFixture();
 
     /**
      * Creates a new empty {@link NodeStore} instance. An implementation must
@@ -66,32 +50,5 @@ public abstract class NodeStoreFixture {
 
     public boolean isAvailable() {
         return true;
-    }
-
-    public static Collection<Object[]> asJunitParameters(Set<Fixture> fixtures) {
-        List<NodeStoreFixture> configuredFixtures = new ArrayList<NodeStoreFixture>();
-        if (fixtures.contains(Fixture.DOCUMENT_NS)) {
-            configuredFixtures.add(DOCUMENT_NS);
-        }
-        if (fixtures.contains(Fixture.SEGMENT_MK)) {
-            configuredFixtures.add(SEGMENT_MK);
-        }
-        if (fixtures.contains(Fixture.MEMORY_NS)) {
-            configuredFixtures.add(MEMORY_NS);
-        }
-        if (fixtures.contains(Fixture.DOCUMENT_RDB)) {
-            configuredFixtures.add(DOCUMENT_RDB);
-        }
-        if ( fixtures.contains(Fixture.MEMORY_MULTI_NS)) {
-            configuredFixtures.add(MEMORY_MULTI_NS);
-        }
-
-        Collection<Object[]> result = new ArrayList<Object[]>();
-        for (NodeStoreFixture f : configuredFixtures) {
-            if (f.isAvailable()) {
-                result.add(new Object[]{f});
-            }
-        }
-        return result;
     }
 }

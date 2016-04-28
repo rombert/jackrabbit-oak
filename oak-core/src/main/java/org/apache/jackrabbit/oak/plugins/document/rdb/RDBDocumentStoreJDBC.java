@@ -16,12 +16,15 @@
  */
 package org.apache.jackrabbit.oak.plugins.document.rdb;
 
+import static com.google.common.collect.Iterables.transform;
+import static com.google.common.collect.Sets.newHashSet;
 import static org.apache.jackrabbit.oak.plugins.document.rdb.RDBDocumentStore.CHAR2OCTETRATIO;
 import static org.apache.jackrabbit.oak.plugins.document.rdb.RDBDocumentStore.asBytes;
 import static org.apache.jackrabbit.oak.plugins.document.rdb.RDBJDBCTools.closeResultSet;
 import static org.apache.jackrabbit.oak.plugins.document.rdb.RDBJDBCTools.closeStatement;
 
 import java.io.UnsupportedEncodingException;
+import java.sql.BatchUpdateException;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -31,9 +34,9 @@ import java.sql.Types;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -222,52 +225,42 @@ public class RDBDocumentStoreJDBC {
         }
     }
 
-    public long determineServerTimeDifferenceMillis(Connection connection, RDBTableMetaData tmd) {
-        PreparedStatement stmt = null;
-        ResultSet rs = null;
-        long result;
-        try {
-            String t = "select ";
-            if (this.dbInfo.getFetchFirstSyntax() == FETCHFIRSTSYNTAX.TOP) {
-                t += "TOP 1 ";
-            }
-            t += this.dbInfo.getCurrentTimeStampInMsSyntax() + " from " + tmd.getName();
-            switch (this.dbInfo.getFetchFirstSyntax()) {
-                case LIMIT:
-                    t += " LIMIT 1";
-                    break;
-                case FETCHFIRST:
-                    t += " FETCH FIRST 1 ROWS ONLY";
-                    break;
-                default:
-                    break;
-            }
+    public long determineServerTimeDifferenceMillis(Connection connection) {
+        String sql = this.dbInfo.getCurrentTimeStampInSecondsSyntax();
 
-            stmt = connection.prepareStatement(t);
-            long start = System.currentTimeMillis();
-            rs = stmt.executeQuery();
-            if (rs.next()) {
-                long roundtrip = System.currentTimeMillis() - start;
-                long serverTime = rs.getTimestamp(1).getTime();
-                long roundedTime = start + roundtrip / 2;
-                result = roundedTime - serverTime;
-                String msg = String.format("instance timestamp: %d, DB timestamp: %d, difference: %d", roundedTime, serverTime,
-                        result);
-                if (Math.abs(result) >= 2000) {
-                    LOG.info(msg);
+        if (sql.isEmpty()) {
+            LOG.debug("{}: unsupported database, skipping DB server time check", this.dbInfo.toString());
+            return 0;
+        } else {
+            PreparedStatement stmt = null;
+            ResultSet rs = null;
+            try {
+                stmt = connection.prepareStatement(sql);
+                long start = System.currentTimeMillis();
+                rs = stmt.executeQuery();
+                if (rs.next()) {
+                    long roundtrip = System.currentTimeMillis() - start;
+                    long serverTimeSec = rs.getInt(1);
+                    long roundedTimeSec = ((start + roundtrip / 2) + 500) / 1000;
+                    long resultSec = roundedTimeSec - serverTimeSec;
+                    String message = String.format("instance timestamp: %d, DB timestamp: %d, difference: %d", roundedTimeSec,
+                            serverTimeSec, resultSec);
+                    if (Math.abs(resultSec) >= 2) {
+                        LOG.info(message);
+                    } else {
+                        LOG.debug(message);
+                    }
+                    return resultSec * 1000;
                 } else {
-                    LOG.debug(msg);
+                    throw new DocumentStoreException("failed to determine server timestamp");
                 }
-            } else {
-                throw new DocumentStoreException("failed to determine server timestamp");
+            } catch (Exception ex) {
+                LOG.error("Trying to determine time difference to server", ex);
+                throw new DocumentStoreException(ex);
+            } finally {
+                closeResultSet(rs);
+                closeStatement(stmt);
             }
-            return result;
-        } catch (Exception ex) {
-            LOG.error("Trying to determine time difference to server", ex);
-            throw new DocumentStoreException(ex);
-        } finally {
-            closeResultSet(rs);
-            closeStatement(stmt);
         }
     }
 
@@ -276,8 +269,10 @@ public class RDBDocumentStoreJDBC {
                 "insert into " + tmd.getName() + "(ID, MODIFIED, HASBINARY, DELETEDONCE, MODCOUNT, CMODCOUNT, DSIZE, DATA, BDATA) "
                         + "values (?, ?, ?, ?, ?, ?, ?, ?, ?)");
 
+        List<T> sortedDocs = sortDocuments(documents);
+        int[] results;
         try {
-            for (T document : documents) {
+            for (T document : sortedDocs) {
                 String data = this.ser.asString(document);
                 String id = document.getId();
                 Number hasBinary = (Number) document.get(NodeDocument.HAS_BINARY_FLAG);
@@ -303,21 +298,23 @@ public class RDBDocumentStoreJDBC {
                 }
                 stmt.addBatch();
             }
-            int[] results = stmt.executeBatch();
-
-            Set<String> succesfullyInserted = new HashSet<String>();
-            for (int i = 0; i < documents.size(); i++) {
-                int result = results[i];
-                if (result != 1 && result != Statement.SUCCESS_NO_INFO) {
-                    LOG.error("DB insert failed for {}: {}", tmd.getName(), documents.get(i).getId());
-                } else {
-                    succesfullyInserted.add(documents.get(i).getId());
-                }
-            }
-            return succesfullyInserted;
+            results = stmt.executeBatch();
+        } catch (BatchUpdateException ex) {
+            LOG.debug("Some of the batch updates failed", ex);
+            results = ex.getUpdateCounts();
         } finally {
             stmt.close();
         }
+        Set<String> succesfullyInserted = new HashSet<String>();
+        for (int i = 0; i < results.length; i++) {
+            int result = results[i];
+            if (result != 1 && result != Statement.SUCCESS_NO_INFO) {
+                LOG.debug("DB insert failed for {}: {}", tmd.getName(), sortedDocs.get(i).getId());
+            } else {
+                succesfullyInserted.add(sortedDocs.get(i).getId());
+            }
+        }
+        return succesfullyInserted;
     }
 
     /**
@@ -328,6 +325,9 @@ public class RDBDocumentStoreJDBC {
      * <p>
      * If the {@code upsert} parameter is set to true, the method will also try to insert new documents, those
      * which modcount equals to 1.
+     * <p>
+     * The order of applying updates will be different than order of the passed list, so there shouldn't be two
+     * updates related to the same document. An {@link IllegalArgumentException} will be thrown if there are.
      *
      * @param connection JDBC connection
      * @param tmd Table metadata
@@ -338,13 +338,17 @@ public class RDBDocumentStoreJDBC {
      */
     public <T extends Document> Set<String> update(Connection connection, RDBTableMetaData tmd, List<T> documents, boolean upsert)
             throws SQLException {
+        assertNoDuplicatedIds(documents);
+
         Set<String> successfulUpdates = new HashSet<String>();
+        List<String> updatedKeys = new ArrayList<String>();
+        int[] batchResults = new int[0];
 
         PreparedStatement stmt = connection.prepareStatement("update " + tmd.getName()
             + " set MODIFIED = ?, HASBINARY = ?, DELETEDONCE = ?, MODCOUNT = ?, CMODCOUNT = ?, DSIZE = ?, DATA = ?, BDATA = ? where ID = ? and MODCOUNT = ?");
         try {
-            List<String> updatedKeys = new ArrayList<String>();
-            for (T document : documents) {
+            boolean batchIsEmpty = true;
+            for (T document : sortDocuments(documents)) {
                 Long modcount = (Long) document.get(MODCOUNT);
                 if (modcount == 1) {
                     continue; // This is a new document. We'll deal with the inserts later.
@@ -377,67 +381,48 @@ public class RDBDocumentStoreJDBC {
                 stmt.setObject(si++, modcount - 1, Types.BIGINT);
                 stmt.addBatch();
                 updatedKeys.add(document.getId());
-            }
 
-            int[] batchResults = stmt.executeBatch();
-
-            for (int i = 0; i < batchResults.length; i++) {
-                int result = batchResults[i];
-                if (result == 1 || result == Statement.SUCCESS_NO_INFO) {
-                    successfulUpdates.add(updatedKeys.get(i));
-                }
+                batchIsEmpty = false;
             }
+            if (!batchIsEmpty) {
+                batchResults = stmt.executeBatch();
+                connection.commit();
+            }
+        } catch (BatchUpdateException ex) {
+            LOG.debug("Some of the batch updates failed", ex);
+            batchResults = ex.getUpdateCounts();
         } finally {
             stmt.close();
         }
 
+        for (int i = 0; i < batchResults.length; i++) {
+            int result = batchResults[i];
+            if (result == 1 || result == Statement.SUCCESS_NO_INFO) {
+                successfulUpdates.add(updatedKeys.get(i));
+            }
+        }
+
         if (upsert) {
-            List<T> remainingDocuments = new ArrayList<T>(documents.size() - successfulUpdates.size());
+            List<T> toBeInserted = new ArrayList<T>(documents.size());
             for (T doc : documents) {
-                if (!successfulUpdates.contains(doc.getId())) {
-                    remainingDocuments.add(doc);
+                if ((Long) doc.get(MODCOUNT) == 1) {
+                    toBeInserted.add(doc);
                 }
             }
 
-            if (!remainingDocuments.isEmpty()) {
-                Set<String> documentsWithUpdatedModcount = new HashSet<String>();
-                List<String> remainingDocumentIds = Lists.transform(remainingDocuments, idExtractor);
-                for (List<String> keys : Lists.partition(remainingDocumentIds, RDBJDBCTools.MAX_IN_CLAUSE)) {
-                    PreparedStatementComponent inClause = RDBJDBCTools.createInStatement("ID", keys, tmd.isIdBinary());
-                    StringBuilder sql = new StringBuilder("select ID from ").append(tmd.getName());
-                    sql.append(" where ").append(inClause.getStatementComponent());
-
-                    PreparedStatement selectStmt = null;
-                    ResultSet rs = null;
-                    try {
-                        selectStmt = connection.prepareStatement(sql.toString());
-                        selectStmt.setPoolable(false);
-                        inClause.setParameters(selectStmt, 1);
-                        rs = selectStmt.executeQuery();
-                        while (rs.next()) {
-                            documentsWithUpdatedModcount.add(getIdFromRS(tmd, rs, 1));
-                        }
-                    } finally {
-                        closeResultSet(rs);
-                        closeStatement(selectStmt);
-                    }
-                }
-
-                Iterator<T> it = remainingDocuments.iterator();
-                while (it.hasNext()) {
-                    if (documentsWithUpdatedModcount.contains(it.next().getId())) {
-                        it.remove();
-                    }
-                }
-
-                if (!remainingDocuments.isEmpty()) {
-                    for (String id : insert(connection, tmd, remainingDocuments)) {
-                        successfulUpdates.add(id);
-                    }
+            if (!toBeInserted.isEmpty()) {
+                for (String id : insert(connection, tmd, toBeInserted)) {
+                    successfulUpdates.add(id);
                 }
             }
         }
         return successfulUpdates;
+    }
+
+    private static <T extends Document> void assertNoDuplicatedIds(List<T> documents) {
+        if (newHashSet(transform(documents, idExtractor)).size() < documents.size()) {
+            throw new IllegalArgumentException("There are duplicated ids in the document list");
+        }
     }
 
     private final static Map<String, String> INDEXED_PROP_MAPPING;
@@ -573,14 +558,15 @@ public class RDBDocumentStoreJDBC {
         long elapsed = System.currentTimeMillis() - start;
         if (this.queryHitsLimit != 0 && result.size() > this.queryHitsLimit) {
             String message = String.format(
-                    "Potentially excessive query with %d hits (limited to %d, configured QUERYHITSLIMIT %d), elapsed time %dms, params minid '%s' maxid '%s' excludeKeyPatterns %s condition %s limit %d. Check calling method.",
-                    result.size(), limit, this.queryHitsLimit, elapsed, minId, maxId, excludeKeyPatterns, conditions, limit);
+                    "Potentially excessive query on %s with %d hits (limited to %d, configured QUERYHITSLIMIT %d), elapsed time %dms, params minid '%s' maxid '%s' excludeKeyPatterns %s condition %s limit %d. Read %d chars from DATA and %d bytes from BDATA. Check calling method.",
+                    tmd.getName(), result.size(), limit, this.queryHitsLimit, elapsed, minId, maxId, excludeKeyPatterns, conditions,
+                    limit, dataTotal, bdataTotal);
             LOG.info(message, new Exception("call stack"));
         } else if (this.queryTimeLimit != 0 && elapsed > this.queryTimeLimit) {
             String message = String.format(
-                    "Long running query with %d hits (limited to %d), elapsed time %dms (configured QUERYTIMELIMIT %d), params minid '%s' maxid '%s' excludeKeyPatterns %s conditions %s limit %d. Read %d chars from DATA and %d bytes from BDATA. Check calling method.",
-                    result.size(), limit, elapsed, this.queryTimeLimit, minId, maxId, excludeKeyPatterns, conditions, limit,
-                    dataTotal, bdataTotal);
+                    "Long running query on %s with %d hits (limited to %d), elapsed time %dms (configured QUERYTIMELIMIT %d), params minid '%s' maxid '%s' excludeKeyPatterns %s conditions %s limit %d. Read %d chars from DATA and %d bytes from BDATA. Check calling method.",
+                    tmd.getName(), result.size(), limit, elapsed, this.queryTimeLimit, minId, maxId, excludeKeyPatterns, conditions,
+                    limit, dataTotal, bdataTotal);
             LOG.info(message, new Exception("call stack"));
         }
 
@@ -761,6 +747,17 @@ public class RDBDocumentStoreJDBC {
         } else {
             stmt.setString(idx, id);
         }
+    }
+
+    private static <T extends Document> List<T> sortDocuments(Collection<T> documents) {
+        List<T> result = new ArrayList<T>(documents);
+        Collections.sort(result, new Comparator<T>() {
+            @Override
+            public int compare(T o1, T o2) {
+                return o1.getId().compareTo(o2.getId());
+            }
+        });
+        return result;
     }
 
     private static final Function<Document, String> idExtractor = new Function<Document, String>() {

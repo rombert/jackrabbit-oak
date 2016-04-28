@@ -105,6 +105,7 @@ import org.apache.jackrabbit.oak.spi.xml.ProtectedItemImporter;
                 intValue = 100)
 })
 public class AuthorizationConfigurationImpl extends ConfigurationBase implements AuthorizationConfiguration {
+
     public AuthorizationConfigurationImpl() {
         super();
     }
@@ -117,7 +118,6 @@ public class AuthorizationConfigurationImpl extends ConfigurationBase implements
     private void activate(Map<String, Object> properties) {
         setParameters(ConfigurationParameters.of(properties));
     }
-
 
     public AuthorizationConfigurationImpl(SecurityProvider securityProvider) {
         super(securityProvider, securityProvider.getParameters(NAME));

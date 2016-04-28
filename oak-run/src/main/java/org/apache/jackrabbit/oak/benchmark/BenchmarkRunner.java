@@ -34,6 +34,7 @@ import joptsimple.OptionSpec;
 import org.apache.commons.io.FileUtils;
 import org.apache.jackrabbit.oak.benchmark.wikipedia.WikipediaImport;
 import org.apache.jackrabbit.oak.fixture.JackrabbitRepositoryFixture;
+import org.apache.jackrabbit.oak.fixture.OakFixture;
 import org.apache.jackrabbit.oak.fixture.OakRepositoryFixture;
 import org.apache.jackrabbit.oak.fixture.RepositoryFixture;
 import org.apache.jackrabbit.oak.spi.xml.ImportBehavior;
@@ -52,6 +53,8 @@ public class BenchmarkRunner {
         OptionSpec<Integer> port = parser.accepts("port", "MongoDB port")
                 .withRequiredArg().ofType(Integer.class).defaultsTo(27017);
         OptionSpec<String> dbName = parser.accepts("db", "MongoDB database")
+                .withRequiredArg();
+        OptionSpec<String> mongouri = parser.accepts("mongouri", "MongoDB URI")
                 .withRequiredArg();
         OptionSpec<Boolean> dropDBAfterTest = parser.accepts("dropDBAfterTest", "Whether to drop the MongoDB database after the test")
                 .withOptionalArg().ofType(Boolean.class).defaultsTo(true);
@@ -98,7 +101,7 @@ public class BenchmarkRunner {
         OptionSpec<Boolean> nestedGroups = parser.accepts("nestedGroups", "Use nested groups.")
                         .withOptionalArg().ofType(Boolean.class).defaultsTo(false);
         OptionSpec<Integer> batchSize = parser.accepts("batchSize", "Batch size before persisting operations.")
-                .withOptionalArg().ofType(Integer.class).defaultsTo(ManyGroupMembersTest.DEFAULT_BATCH_SIZE);
+                .withOptionalArg().ofType(Integer.class).defaultsTo(AddMembersTest.DEFAULT_BATCH_SIZE);
         OptionSpec<String> importBehavior = parser.accepts("importBehavior", "Protected Item Import Behavior")
                                 .withOptionalArg().ofType(String.class).defaultsTo(ImportBehavior.NAME_BESTEFFORT);
         OptionSpec<Integer> itemsToRead = parser.accepts("itemsToRead", "Number of items to read")
@@ -134,23 +137,27 @@ public class BenchmarkRunner {
             System.exit(0);
         }
 
+        String uri = mongouri.value(options);
+        if (uri == null) {
+            String db = dbName.value(options);
+            if (db == null) {
+                db = OakFixture.getUniqueDatabaseName(OakFixture.OAK_MONGO);
+            }
+            uri = "mongodb://" + host.value(options) + ":" + port.value(options) + "/" + db;
+        }
         int cacheSize = cache.value(options);
         RepositoryFixture[] allFixtures = new RepositoryFixture[] {
                 new JackrabbitRepositoryFixture(base.value(options), cacheSize),
                 OakRepositoryFixture.getMemoryNS(cacheSize * MB),
-                OakRepositoryFixture.getMongo(
-                        host.value(options), port.value(options),
-                        dbName.value(options), dropDBAfterTest.value(options),
-                        cacheSize * MB),
-                OakRepositoryFixture.getMongoWithFDS(
-                        host.value(options), port.value(options),
-                        dbName.value(options), dropDBAfterTest.value(options),
+                OakRepositoryFixture.getMongo(uri,
+                        dropDBAfterTest.value(options), cacheSize * MB),
+                OakRepositoryFixture.getMongoWithFDS(uri,
+                        dropDBAfterTest.value(options),
                         cacheSize * MB,
                         base.value(options),
                         fdsCache.value(options)),
-                OakRepositoryFixture.getMongoNS(
-                        host.value(options), port.value(options),
-                        dbName.value(options), dropDBAfterTest.value(options),
+                OakRepositoryFixture.getMongoNS(uri,
+                        dropDBAfterTest.value(options),
                         cacheSize * MB),
                 OakRepositoryFixture.getTar(
                         base.value(options), 256, cacheSize, mmap.value(options)),
@@ -210,6 +217,7 @@ public class BenchmarkRunner {
             new ConcurrentWriteReadTest(),
             new ConcurrentWriteTest(),
             new SimpleSearchTest(),
+            new UUIDLookupTest(),
             new SQL2SearchTest(),
             new DescendantSearchTest(),
             new SQL2DescendantSearchTest(),
@@ -312,10 +320,50 @@ public class BenchmarkRunner {
             new GetGroupPrincipalsTest(
                     numberOfGroups.value(options),
                     nestedGroups.value(options)),
-            new ManyGroupMembersTest(
+
+            // benchmarks adding multiple or single members
+            new AddMembersTest(
                     numberOfUsers.value(options),
                     batchSize.value(options),
                     importBehavior.value(options)),
+            new AddMemberTest(
+                    numberOfUsers.value(options),
+                    batchSize.value(options)),
+
+            // benchmarks removing multiple or single members
+            new RemoveMembersTest(
+                    numberOfUsers.value(options),
+                    batchSize.value(options)),
+            new RemoveMemberTest(
+                    numberOfUsers.value(options),
+                    batchSize.value(options)),
+
+            // benchmark testing isMember/isDeclared member; each user only being member of 1 group
+            new IsMemberTest(
+                    numberOfUsers.value(options),
+                    nestedGroups.value(options)),
+            new IsDeclaredMemberTest(
+                    numberOfUsers.value(options),
+                    nestedGroups.value(options)),
+
+            // 4 benchmarks with the same setup test various membership operations.
+            new MemberDeclaredMemberOf(
+                    numberOfGroups.value(options),
+                    nestedGroups.value(options),
+                    numberOfUsers.value(options)),
+            new MemberMemberOf(
+                    numberOfGroups.value(options),
+                    nestedGroups.value(options),
+                    numberOfUsers.value(options)),
+            new MemberIsDeclaredMember(
+                    numberOfGroups.value(options),
+                    nestedGroups.value(options),
+                    numberOfUsers.value(options)),
+            new MemberIsMember(
+                    numberOfGroups.value(options),
+                    nestedGroups.value(options),
+                    numberOfUsers.value(options)),
+
             new FullTextSearchTest(
                     wikipedia.value(options),
                     flatStructure.value(options),
@@ -332,7 +380,8 @@ public class BenchmarkRunner {
             new LucenePropertyFTSeparated(
                 wikipedia.value(options),
                 flatStructure.value(options),
-                report.value(options), withStorage.value(options))
+                report.value(options), withStorage.value(options)),
+            new ReplicaCrashResilienceTest()
         };
 
         Set<String> argset = Sets.newHashSet(nonOption.values(options));

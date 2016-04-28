@@ -39,10 +39,13 @@ import com.google.common.collect.AbstractIterator;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Queues;
 import com.google.common.collect.Sets;
+import com.google.common.primitives.Chars;
 import org.apache.jackrabbit.oak.api.PropertyValue;
 import org.apache.jackrabbit.oak.api.Result.SizePrecision;
 import org.apache.jackrabbit.oak.api.Type;
 import org.apache.jackrabbit.oak.commons.PathUtils;
+import org.apache.jackrabbit.oak.commons.json.JsopBuilder;
+import org.apache.jackrabbit.oak.commons.json.JsopWriter;
 import org.apache.jackrabbit.oak.plugins.index.aggregate.NodeAggregator;
 import org.apache.jackrabbit.oak.plugins.index.lucene.IndexDefinition.IndexingRule;
 import org.apache.jackrabbit.oak.plugins.index.lucene.IndexPlanner.PlanResult;
@@ -95,6 +98,7 @@ import org.apache.lucene.index.Term;
 import org.apache.lucene.queries.CustomScoreQuery;
 import org.apache.lucene.queryparser.classic.ParseException;
 import org.apache.lucene.queryparser.classic.QueryParser;
+import org.apache.lucene.queryparser.classic.QueryParserBase;
 import org.apache.lucene.queryparser.flexible.core.QueryNodeException;
 import org.apache.lucene.queryparser.flexible.standard.StandardQueryParser;
 import org.apache.lucene.queryparser.flexible.standard.config.StandardQueryConfigHandler;
@@ -128,6 +132,7 @@ import org.slf4j.LoggerFactory;
 
 import static com.google.common.base.Preconditions.checkNotNull;
 import static com.google.common.base.Preconditions.checkState;
+import static com.google.common.collect.Lists.newArrayList;
 import static com.google.common.collect.Lists.newArrayListWithCapacity;
 import static org.apache.jackrabbit.JcrConstants.JCR_MIXINTYPES;
 import static org.apache.jackrabbit.JcrConstants.JCR_PRIMARYTYPE;
@@ -444,13 +449,17 @@ public class LucenePropertyIndex implements AdvancedQueryIndex, QueryIndex, Nati
                         }
                     } else if (luceneRequestFacade.getLuceneRequest() instanceof SpellcheckHelper.SpellcheckQuery) {
                         String aclCheckField = indexNode.getDefinition().isFullTextEnabled() ? FieldNames.FULLTEXT : FieldNames.SPELLCHECK;
+                        noDocs = true;
                         SpellcheckHelper.SpellcheckQuery spellcheckQuery = (SpellcheckHelper.SpellcheckQuery) luceneRequestFacade.getLuceneRequest();
                         SuggestWord[] suggestWords = SpellcheckHelper.getSpellcheck(spellcheckQuery);
 
                         // ACL filter spellchecks
                         QueryParser qp = new QueryParser(Version.LUCENE_47, aclCheckField, indexNode.getDefinition().getAnalyzer());
                         for (SuggestWord suggestion : suggestWords) {
-                            Query query = qp.createPhraseQuery(aclCheckField, suggestion.string);
+                            Query query = qp.createPhraseQuery(aclCheckField, QueryParserBase.escape(suggestion.string));
+
+                            query = addDescendantClauseIfRequired(query, plan);
+
                             TopDocs topDocs = searcher.search(query, 100);
                             if (topDocs.totalHits > 0) {
                                 for (ScoreDoc doc : topDocs.scoreDocs) {
@@ -463,9 +472,9 @@ public class LucenePropertyIndex implements AdvancedQueryIndex, QueryIndex, Nati
                             }
                         }
 
-                        noDocs = true;
                     } else if (luceneRequestFacade.getLuceneRequest() instanceof SuggestHelper.SuggestQuery) {
                         SuggestHelper.SuggestQuery suggestQuery = (SuggestHelper.SuggestQuery) luceneRequestFacade.getLuceneRequest();
+                        noDocs = true;
 
                         List<Lookup.LookupResult> lookupResults = SuggestHelper.getSuggestions(indexNode.getLookup(), suggestQuery);
 
@@ -475,7 +484,10 @@ public class LucenePropertyIndex implements AdvancedQueryIndex, QueryIndex, Nati
 
                         // ACL filter suggestions
                         for (Lookup.LookupResult suggestion : lookupResults) {
-                            Query query = qp.parse("\"" + suggestion.key.toString() + "\"");
+                            Query query = qp.parse("\"" + QueryParserBase.escape(suggestion.key.toString()) + "\"");
+
+                            query = addDescendantClauseIfRequired(query, plan);
+
                             TopDocs topDocs = searcher.search(query, 100);
                             if (topDocs.totalHits > 0) {
                                 for (ScoreDoc doc : topDocs.scoreDocs) {
@@ -487,8 +499,6 @@ public class LucenePropertyIndex implements AdvancedQueryIndex, QueryIndex, Nati
                                 }
                             }
                         }
-
-                        noDocs = true;
                     }
                 } catch (Exception e) {
                     LOG.warn("query via {} failed.", LucenePropertyIndex.this, e);
@@ -540,6 +550,30 @@ public class LucenePropertyIndex implements AdvancedQueryIndex, QueryIndex, Nati
             }
         };
         return new LucenePathCursor(itr, plan, settings, sizeEstimator);
+    }
+
+    private static Query addDescendantClauseIfRequired(Query query, IndexPlan plan) {
+        Filter filter = plan.getFilter();
+
+        if (filter.getPathRestriction() == Filter.PathRestriction.ALL_CHILDREN) {
+            String path = getPathRestriction(plan);
+            if (!PathUtils.denotesRoot(path)) {
+                if (getPlanResult(plan).indexDefinition.evaluatePathRestrictions()) {
+
+                    BooleanQuery compositeQuery = new BooleanQuery();
+                    compositeQuery.add(query, BooleanClause.Occur.MUST);
+
+                    Query pathQuery = new TermQuery(newAncestorTerm(path));
+                    compositeQuery.add(pathQuery, BooleanClause.Occur.MUST);
+
+                    query = compositeQuery;
+                } else {
+                    LOG.warn("Descendant clause could not be added without path restrictions enabled. Plan: {}", plan);
+                }
+            }
+        }
+
+        return query;
     }
 
     private String getExcerpt(IndexNode indexNode, IndexSearcher searcher, Query query, ScoreDoc doc) throws IOException {
@@ -1335,6 +1369,11 @@ public class LucenePropertyIndex implements AdvancedQueryIndex, QueryIndex, Nati
     }
 
     /**
+     * Following chars are used as operators in Lucene Query and should be escaped
+     */
+    private static final char[] LUCENE_QUERY_OPERATORS = {':' , '/', '!', '&', '|'};
+
+    /**
      * Following logic is taken from org.apache.jackrabbit.core.query.lucene.JackrabbitQueryParser#parse(java.lang.String)
      */
     static String rewriteQueryText(String textsearch) {
@@ -1359,10 +1398,7 @@ public class LucenePropertyIndex implements AdvancedQueryIndex, QueryIndex, Nati
                     escaped = false;
                 }
                 rewritten.append(c);
-            } else if (c == ':' || c == '/') {
-                //TODO Some other chars are also considered special See OAK-3769 for details
-                //':' fields as known in lucene are not supported
-                //'/' its a special char used for regex search in Lucene
+            } else if (Chars.contains(LUCENE_QUERY_OPERATORS, c)) {
                 rewritten.append('\\').append(c);
             } else {
                 if (escaped) {
@@ -1463,7 +1499,7 @@ public class LucenePropertyIndex implements AdvancedQueryIndex, QueryIndex, Nati
                 }
 
             };
-            pathCursor = new PathCursor(pathIterator, false, settings);
+            pathCursor = new PathCursor(pathIterator, getPlanResult(plan).isUniquePathsRequired(), settings);
         }
 
 
@@ -1490,7 +1526,9 @@ public class LucenePropertyIndex implements AdvancedQueryIndex, QueryIndex, Nati
                 @Override
                 public String getPath() {
                     String sub = pathRow.getPath();
-                    if (PathUtils.isAbsolute(sub)) {
+                    if (isVirtualRow()) {
+                        return sub;
+                    } else if (PathUtils.isAbsolute(sub)) {
                         return pathPrefix + sub;
                     } else {
                         return PathUtils.concat(pathPrefix, sub);
@@ -1519,7 +1557,13 @@ public class LucenePropertyIndex implements AdvancedQueryIndex, QueryIndex, Nati
                             if (facets != null) {
                                 FacetResult topChildren = facets.getTopChildren(10, facetFieldName);
                                 if (topChildren != null) {
-                                    return PropertyValues.newString(facetFieldName + ":" + Arrays.toString(topChildren.labelValues));
+                                    JsopWriter writer = new JsopBuilder();
+                                    writer.object();
+                                    for (LabelAndValue lav : topChildren.labelValues) {
+                                        writer.key(lav.label).value(lav.value.intValue());
+                                    }
+                                    writer.endObject();
+                                    return PropertyValues.newString(writer.toString());
                                 } else {
                                     return null;
                                 }
@@ -1544,7 +1588,7 @@ public class LucenePropertyIndex implements AdvancedQueryIndex, QueryIndex, Nati
         }
     }
 
-    private static class PathStoredFieldVisitor extends StoredFieldVisitor {
+    static class PathStoredFieldVisitor extends StoredFieldVisitor {
 
         private String path;
         private boolean pathVisited;

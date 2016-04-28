@@ -23,7 +23,7 @@
     <parent>
         <groupId>org.apache.jackrabbit</groupId>
         <artifactId>oak-parent</artifactId>
-        <version>1.4-SNAPSHOT</version>
+        <version>1.6-SNAPSHOT</version>
         <relativePath>../oak-parent/pom.xml</relativePath>
     </parent>
 
@@ -64,6 +64,7 @@
             org.apache.jackrabbit.core.query.JoinTest#testJoinWithOR4                                      <!-- OAK-3437 -->
             org.apache.jackrabbit.core.query.JoinTest#testJoinWithOR5                                      <!-- OAK-3437 -->
             org.apache.jackrabbit.oak.jcr.query.SpellcheckTest#testSpellcheckMultipleWords                 <!-- OAK-3355 -->
+            org.apache.jackrabbit.oak.jcr.query.FacetTest                                                  <!-- OAK-3809 -->
         </known.issues>
     </properties>
 

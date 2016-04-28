@@ -22,7 +22,9 @@ import static org.apache.jackrabbit.oak.plugins.index.reference.NodeReferenceCon
 
 import org.apache.felix.scr.annotations.Component;
 import org.apache.felix.scr.annotations.Reference;
+import org.apache.felix.scr.annotations.Property;
 import org.apache.felix.scr.annotations.Service;
+import org.apache.jackrabbit.oak.plugins.index.IndexConstants;
 import org.apache.jackrabbit.oak.plugins.index.IndexEditorProvider;
 import org.apache.jackrabbit.oak.plugins.index.IndexUpdateCallback;
 import org.apache.jackrabbit.oak.spi.commit.Editor;
@@ -32,6 +34,7 @@ import org.apache.jackrabbit.oak.spi.state.NodeState;
 
 @Component
 @Service(IndexEditorProvider.class)
+@Property(name = IndexConstants.TYPE_PROPERTY_NAME , value = NodeReferenceConstants.TYPE, propertyPrivate = true)
 public class ReferenceEditorProvider implements IndexEditorProvider {
 
     @Reference
