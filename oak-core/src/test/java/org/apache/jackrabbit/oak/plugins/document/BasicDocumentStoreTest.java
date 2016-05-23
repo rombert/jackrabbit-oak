@@ -269,6 +269,18 @@ public class BasicDocumentStoreTest extends AbstractDocumentStoreTest {
         testMaxId(false);
     }
 
+    @Test
+    public void testLongId() {
+        String id = "0:/" + generateId(2048, true);
+        assertNull("find() with ultra-long id needs to return 'null'", super.ds.find(Collection.NODES, id));
+
+        if (! super.dsname.contains("Memory")) {
+            UpdateOp up = new UpdateOp(id,  true);
+            up.set("_id", id);
+            assertFalse("create() with ultra-long id needs to fail", super.ds.create(Collection.NODES, Collections.singletonList(up)));
+        }
+    }
+
     private int testMaxId(boolean ascii) {
         int min = 0;
         int max = 32768;
@@ -429,6 +441,30 @@ public class BasicDocumentStoreTest extends AbstractDocumentStoreTest {
         String endId = this.getClass().getName() + ".testModifiedMaxUpdatf";
         List<NodeDocument> results = super.ds.query(Collection.NODES, startId, endId, "_modified", 1000, 1);
         assertEquals("document not found, maybe indexed _modified property not properly updated", 1, results.size());
+    }
+
+    @Test
+    public void testModifiedMaxUpdateQuery2() {
+        // test for https://issues.apache.org/jira/browse/OAK-4388
+        String id = this.getClass().getName() + ".testModifiedMaxUpdate2";
+        // create a test node
+        UpdateOp up = new UpdateOp(id, true);
+        up.set("_id", id);
+        up.set("_modified", 1000L);
+        boolean success = super.ds.create(Collection.NODES, Collections.singletonList(up));
+        assertTrue(success);
+        removeMe.add(id);
+
+        for (int i = 0; i < 25; i++) {
+            // update with smaller _modified
+            UpdateOp up2 = new UpdateOp(id, true);
+            up2.set("_id", id);
+            up2.max("_modified", 100L);
+            super.ds.findAndUpdate(Collection.NODES, up2);
+            super.ds.invalidateCache();
+            NodeDocument doc = super.ds.find(Collection.NODES, id, 0);
+            assertEquals("modified should not have been set back (test iteration " + i + ")", 1000, (long)doc.getModified());
+        }
     }
 
     @Test

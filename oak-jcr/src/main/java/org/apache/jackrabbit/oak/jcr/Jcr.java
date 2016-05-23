@@ -46,13 +46,12 @@ import org.apache.jackrabbit.oak.plugins.name.NamespaceEditorProvider;
 import org.apache.jackrabbit.oak.plugins.nodetype.TypeEditorProvider;
 import org.apache.jackrabbit.oak.plugins.nodetype.write.InitialContent;
 import org.apache.jackrabbit.oak.plugins.observation.CommitRateLimiter;
-import org.apache.jackrabbit.oak.plugins.version.VersionEditorProvider;
+import org.apache.jackrabbit.oak.plugins.version.VersionHook;
 import org.apache.jackrabbit.oak.query.QueryEngineSettings;
 import org.apache.jackrabbit.oak.security.SecurityProviderImpl;
 import org.apache.jackrabbit.oak.spi.commit.CommitHook;
 import org.apache.jackrabbit.oak.spi.commit.CompositeConflictHandler;
 import org.apache.jackrabbit.oak.spi.commit.Editor;
-import org.apache.jackrabbit.oak.spi.commit.EditorHook;
 import org.apache.jackrabbit.oak.spi.commit.EditorProvider;
 import org.apache.jackrabbit.oak.spi.commit.Observer;
 import org.apache.jackrabbit.oak.spi.commit.PartialConflictHandler;
@@ -107,30 +106,38 @@ public class Jcr {
     private MountInfoProvider mountInfoProvider = MountInfoProvider.DEFAULT;
 
     private Clusterable clusterable;
-    
-    public Jcr(Oak oak) {
+
+    public Jcr(Oak oak, boolean initialize) {
         this.oak = oak;
 
-        with(new InitialContent());
+        if (initialize) {
+            with(new InitialContent());
 
-        with(new EditorHook(new VersionEditorProvider()));
+            with(new VersionHook());
 
-        with(new SecurityProviderImpl());
+            with(new SecurityProviderImpl());
 
-        with(new ItemSaveValidatorProvider());
-        with(new NameValidatorProvider());
-        with(new NamespaceEditorProvider());
-        with(new TypeEditorProvider());
-        with(new ConflictValidatorProvider());
-        with(new ReferenceEditorProvider().with(mountInfoProvider));
-        with(new ReferenceIndexProvider().with(mountInfoProvider));
+            with(new ItemSaveValidatorProvider());
+            with(new NameValidatorProvider());
+            with(new NamespaceEditorProvider());
+            with(new TypeEditorProvider());
+            with(new ConflictValidatorProvider());
 
-        with(new PropertyIndexEditorProvider().with(mountInfoProvider));
-        with(new NodeCounterEditorProvider());
-        with(new PropertyIndexProvider().with(mountInfoProvider));
-        with(new NodeTypeIndexProvider());
+            with(new ReferenceEditorProvider().with(mountInfoProvider));
+            with(new ReferenceIndexProvider().with(mountInfoProvider));
 
-        with(new OrderedPropertyIndexEditorProvider());
+            with(new PropertyIndexEditorProvider().with(mountInfoProvider));
+            with(new NodeCounterEditorProvider());
+
+            with(new PropertyIndexProvider().with(mountInfoProvider));
+            with(new NodeTypeIndexProvider());
+
+            with(new OrderedPropertyIndexEditorProvider());
+        }
+    }
+
+    public Jcr(Oak oak) {
+        this(oak, true);
     }
 
     public Jcr() {

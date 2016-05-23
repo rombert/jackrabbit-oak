@@ -76,6 +76,7 @@ import org.apache.jackrabbit.oak.plugins.document.UpdateOp.Condition;
 import org.apache.jackrabbit.oak.plugins.document.UpdateOp.Key;
 import org.apache.jackrabbit.oak.plugins.document.UpdateOp.Operation;
 import org.apache.jackrabbit.oak.plugins.document.UpdateUtils;
+import org.apache.jackrabbit.oak.plugins.document.cache.CacheChangesTracker;
 import org.apache.jackrabbit.oak.plugins.document.cache.CacheInvalidationStats;
 import org.apache.jackrabbit.oak.plugins.document.cache.NodeDocumentCache;
 import org.apache.jackrabbit.oak.plugins.document.locks.NodeDocumentLocks;
@@ -89,9 +90,6 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
-import com.google.common.hash.BloomFilter;
-import com.google.common.hash.Funnel;
-import com.google.common.hash.PrimitiveSink;
 
 /**
  * Implementation of {@link DocumentStore} for relational databases.
@@ -662,6 +660,15 @@ public class RDBDocumentStore implements DocumentStore {
         } else {
             NodeDocument doc = unwrap(nodesCache.getIfPresent(id));
             return castAsT(doc);
+        }
+    }
+
+    private <T extends Document> T getIfCached(Collection<T> collection, String id, long modCount) {
+        T doc = getIfCached(collection, id);
+        if (doc != null && doc.getModCount() == modCount) {
+            return doc;
+        } else {
+            return null;
         }
     }
 
@@ -1329,7 +1336,6 @@ public class RDBDocumentStore implements DocumentStore {
 
             for (List<String> chunkedIds : Lists.partition(ids, CHUNKSIZE)) {
 
-                Set<QueryContext> seenQueryContext = Collections.emptySet();
                 Map<String, NodeDocument> cachedDocs = Collections.emptyMap();
 
                 if (collection == Collection.NODES) {
@@ -1337,17 +1343,7 @@ public class RDBDocumentStore implements DocumentStore {
                     cachedDocs = new HashMap<String, NodeDocument>();
                     for (String key : chunkedIds) {
                         cachedDocs.put(key, nodesCache.getIfPresent(key));
-                    }
-
-                    // keep concurrently running queries from updating
-                    // the cache entry for this key
-                    seenQueryContext = new HashSet<QueryContext>();
-                    for (QueryContext qc : qmap.values()) {
-                        qc.addKeys(chunkedIds);
-                        seenQueryContext.add(qc);
-                    }
-                    for (String id : chunkedIds) {
-                        nodesCache.invalidate(id);
+                        nodesCache.invalidate(key);
                     }
                 }
 
@@ -1370,13 +1366,6 @@ public class RDBDocumentStore implements DocumentStore {
                 }
                 if (success) {
                     if (collection == Collection.NODES) {
-                        // keep concurrently running queries from updating
-                        // the cache entry for this key
-                        for (QueryContext qc : qmap.values()) {
-                            if (!seenQueryContext.contains(qc)) {
-                                qc.addKeys(chunkedIds);
-                            }
-                        }
                         for (String id : chunkedIds) {
                             nodesCache.invalidate(id);
                         }
@@ -1398,72 +1387,6 @@ public class RDBDocumentStore implements DocumentStore {
         }
     }
 
-    /**
-     * Class used to track which documents may have been updated since the start
-     * of the query and thus may not put into the cache.
-     */
-    private class QueryContext {
-
-        private static final double FPP = 0.01d;
-        private static final int ENTRIES_SCOPED = 1000;
-        private static final int ENTRIES_OPEN = 10000;
-
-        private final String fromKey, toKey;
-        private volatile BloomFilter<String> filter = null;
-
-        private BloomFilter<String> getFilter() {
-            if (filter == null) {
-                synchronized (this) {
-                    if (filter == null) {
-                        filter = BloomFilter.create(new Funnel<String>() {
-                            private static final long serialVersionUID = -7114267990225941161L;
-
-                            @Override
-                            public void funnel(String from, PrimitiveSink into) {
-                                into.putUnencodedChars(from);
-                            }
-                        }, toKey.equals(NodeDocument.MAX_ID_VALUE) ? ENTRIES_OPEN : ENTRIES_SCOPED, FPP);
-                    }
-                }
-            }
-            return filter;
-        }
-
-        public QueryContext(String fromKey, String toKey) {
-            this.fromKey = fromKey;
-            this.toKey = toKey;
-        }
-
-        public void addKey(String key) {
-            if (fromKey.compareTo(key) < 0 && toKey.compareTo(key) > 0) {
-                getFilter().put(key);
-            }
-        }
-
-        public void addKeys(List<String> keys) {
-            for (String key: keys) {
-                addKey(key);
-            }
-        }
-
-        public boolean mayUpdate(String key) {
-            return filter == null ? true : !getFilter().mightContain(key);
-        }
-
-        synchronized public void dispose() {
-            if (LOG.isDebugEnabled()) {
-                if (filter != null) {
-                    LOG.debug("Disposing QueryContext for range " + fromKey + "..." + toKey + " - filter fpp was: "
-                            + filter.expectedFpp());
-                } else {
-                    LOG.debug("Disposing QueryContext for range " + fromKey + "..." + toKey + " - no filter was needed");
-                }
-            }
-        }
-    }
-
-    private Map<Thread, QueryContext> qmap = new ConcurrentHashMap<Thread, QueryContext>();
-
     private <T extends Document> List<T> internalQuery(Collection<T> collection, String fromKey, String toKey,
             List<String> excludeKeyPatterns, List<QueryCondition> conditions, int limit) {
         Connection connection = null;
@@ -1479,13 +1402,12 @@ public class RDBDocumentStore implements DocumentStore {
 
         final Stopwatch watch = startWatch();
         int resultSize = 0;
+        CacheChangesTracker tracker = null;
         try {
-            long now = System.currentTimeMillis();
-            QueryContext qp = null;
             if (collection == Collection.NODES) {
-                qp = new QueryContext(fromKey, toKey);
-                qmap.put(Thread.currentThread(), qp);
+                tracker = nodesCache.registerTracker(fromKey, toKey);
             }
+            long now = System.currentTimeMillis();
             connection = this.ch.getROConnection();
             String from = collection == Collection.NODES && NodeDocument.MIN_ID_VALUE.equals(fromKey) ? null : fromKey;
             String to = collection == Collection.NODES && NodeDocument.MAX_ID_VALUE.equals(toKey) ? null : toKey;
@@ -1495,20 +1417,31 @@ public class RDBDocumentStore implements DocumentStore {
             int size = dbresult.size();
             List<T> result = new ArrayList<T>(size);
             for (int i = 0; i < size; i++) {
-                RDBRow row = dbresult.set(i, null); // free RDBRow ASAP
-                T doc = runThroughCache(collection, row, now, qp);
+                // free RDBRow as early as possible
+                RDBRow row = dbresult.set(i, null);
+                T doc = getIfCached(collection, row.getId(), row.getModcount());
+                if (doc == null) {
+                    // parse DB contents into document if and only if it's not
+                    // already in the cache
+                    doc = convertFromDBObject(collection, row);
+                } else {
+                    // otherwise mark it as fresh
+                    ((NodeDocument) doc).markUpToDate(now);
+                }
                 result.add(doc);
             }
-            resultSize = result.size();
-            if (qp != null) {
-                qp.dispose();
+            if (collection == Collection.NODES) {
+                nodesCache.putNonConflictingDocs(tracker, castAsNodeDocumentList(result));
             }
+            resultSize = result.size();
             return result;
         } catch (Exception ex) {
             LOG.error("SQL exception on query", ex);
             throw new DocumentStoreException(ex);
         } finally {
-            qmap.remove(Thread.currentThread());
+            if (tracker != null) {
+                tracker.close();
+            }
             this.ch.closeConnection(connection);
             stats.doneQuery(watch.elapsed(TimeUnit.NANOSECONDS), collection, fromKey, toKey,
                     !conditions.isEmpty(), resultSize, -1, false);
@@ -1658,8 +1591,8 @@ public class RDBDocumentStore implements DocumentStore {
             }
             if (!success && shouldRetry) {
                 data = ser.asString(document);
-                success = db.update(connection, tmd, document.getId(), modified, hasBinary, deletedOnce, modcount, cmodcount,
-                        oldmodcount, data);
+                success = db.update(connection, tmd, document.getId(), modified, modifiedIsConditional, hasBinary, deletedOnce,
+                        modcount, cmodcount, oldmodcount, data);
                 connection.commit();
             }
             return success;
@@ -1693,6 +1626,9 @@ public class RDBDocumentStore implements DocumentStore {
             Arrays.asList(new Key[] { new Key(NodeDocument.HAS_BINARY_FLAG, null), new Key(NodeDocument.DELETED_ONCE, null) }));
 
     private static boolean isAppendableUpdate(UpdateOp update, boolean batched) {
+        if (NOAPPEND) {
+            return false;
+        }
         if (batched) {
             // Detect update operations not supported when doing batch updates
             for (Key key : update.getChanges().keySet()) {
@@ -1779,6 +1715,9 @@ public class RDBDocumentStore implements DocumentStore {
     // Whether to use GZIP compression
     private static final boolean NOGZIP = Boolean
             .getBoolean("org.apache.jackrabbit.oak.plugins.document.rdb.RDBDocumentStore.NOGZIP");
+    // Whether to use append operations (string concatenation) in the DATA column
+    private static final boolean NOAPPEND = Boolean
+            .getBoolean("org.apache.jackrabbit.oak.plugins.document.rdb.RDBDocumentStore.NOAPPEND");
     // Number of documents to insert at once for batch create
     private static final int CHUNKSIZE = Integer.getInteger(
             "org.apache.jackrabbit.oak.plugins.document.rdb.RDBDocumentStore.CHUNKSIZE", 64);
@@ -1837,6 +1776,11 @@ public class RDBDocumentStore implements DocumentStore {
         return (T) doc;
     }
 
+    @SuppressWarnings("unchecked")
+    private static <T extends Document> List<NodeDocument> castAsNodeDocumentList(List<T> list) {
+        return (List<NodeDocument>) list;
+    }
+
     private NodeDocumentCache nodesCache;
 
     private NodeDocumentLocks locks;
@@ -1871,43 +1815,6 @@ public class RDBDocumentStore implements DocumentStore {
         return ser.fromRow(collection, row);
     }
 
-    private <T extends Document> T runThroughCache(Collection<T> collection, RDBRow row, long now, QueryContext qp) {
-
-        if (collection != Collection.NODES) {
-            // not in the cache anyway
-            return convertFromDBObject(collection, row);
-        }
-
-        String id = row.getId();
-        NodeDocument inCache = nodesCache.getIfPresent(id);
-        Long modCount = row.getModcount();
-
-        // do not overwrite document in cache if the
-        // existing one in the cache is newer
-        if (inCache != null && inCache != NodeDocument.NULL) {
-            // check mod count
-            Long cachedModCount = inCache.getModCount();
-            if (cachedModCount == null) {
-                throw new IllegalStateException("Missing " + Document.MOD_COUNT);
-            }
-            if (modCount <= cachedModCount) {
-                // we can use the cached document
-                inCache.markUpToDate(now);
-                return castAsT(inCache);
-            }
-        }
-
-        NodeDocument fresh = (NodeDocument) convertFromDBObject(collection, row);
-        fresh.seal();
-
-        if (!qp.mayUpdate(id)) {
-            return castAsT(fresh);
-        }
-
-        nodesCache.putIfNewer(fresh);
-        return castAsT(fresh);
-    }
-
     private static boolean hasChangesToCollisions(UpdateOp update) {
         if (!USECMODCOUNT) {
             return false;
@@ -1928,7 +1835,7 @@ public class RDBDocumentStore implements DocumentStore {
     // keeping track of CLUSTER_NODES updates
     private Map<String, Long> cnUpdates = new ConcurrentHashMap<String, Long>();
 
-    private void maintainUpdateStats(Collection collection, String key) {
+    private <T extends Document> void maintainUpdateStats(Collection<T> collection, String key) {
         if (collection == Collection.CLUSTER_NODES) {
             synchronized (this) {
                 Long old = cnUpdates.get(key);

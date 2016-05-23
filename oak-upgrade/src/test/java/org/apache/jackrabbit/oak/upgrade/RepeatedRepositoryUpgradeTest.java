@@ -24,8 +24,8 @@ import org.apache.jackrabbit.commons.JcrUtils;
 import org.apache.jackrabbit.core.RepositoryContext;
 import org.apache.jackrabbit.core.RepositoryImpl;
 import org.apache.jackrabbit.core.config.RepositoryConfig;
-import org.apache.jackrabbit.oak.plugins.segment.SegmentNodeStore;
-import org.apache.jackrabbit.oak.plugins.segment.file.FileStore;
+import org.apache.jackrabbit.oak.segment.SegmentNodeStore;
+import org.apache.jackrabbit.oak.segment.file.FileStore;
 import org.apache.jackrabbit.oak.spi.lifecycle.RepositoryInitializer;
 import org.apache.jackrabbit.oak.spi.state.NodeBuilder;
 import org.apache.jackrabbit.oak.spi.state.NodeStore;
@@ -97,7 +97,7 @@ public class RepeatedRepositoryUpgradeTest extends AbstractRepositoryUpgradeTest
             }
 
             final NodeStore target = getTargetNodeStore();
-            doUpgradeRepository(sourceDir, target);
+            doUpgradeRepository(sourceDir, target, false);
             fileStore.flush();
 
             // re-create source repo
@@ -111,19 +111,19 @@ public class RepeatedRepositoryUpgradeTest extends AbstractRepositoryUpgradeTest
                 source.shutdown();
             }
 
-            doUpgradeRepository(sourceDir, target);
+            doUpgradeRepository(sourceDir, target, true);
             fileStore.flush();
 
             upgradeComplete = true;
         }
     }
 
-    @Override
-    protected void doUpgradeRepository(File source, NodeStore target) throws RepositoryException, IOException {
+    protected void doUpgradeRepository(File source, NodeStore target, boolean skipInit) throws RepositoryException, IOException {
         final RepositoryConfig config = RepositoryConfig.create(source);
         final RepositoryContext context = RepositoryContext.create(config);
         try {
             final RepositoryUpgrade repositoryUpgrade = new RepositoryUpgrade(context, target);
+            repositoryUpgrade.setSkipInitialization(skipInit);
             repositoryUpgrade.copy(new RepositoryInitializer() {
                 @Override
                 public void initialize(@Nonnull NodeBuilder builder) {

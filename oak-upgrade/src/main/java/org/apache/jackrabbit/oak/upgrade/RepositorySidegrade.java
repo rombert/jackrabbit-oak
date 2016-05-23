@@ -52,6 +52,7 @@ import static org.apache.jackrabbit.oak.upgrade.RepositoryUpgrade.DEFAULT_EXCLUD
 import static org.apache.jackrabbit.oak.upgrade.RepositoryUpgrade.DEFAULT_INCLUDE_PATHS;
 import static org.apache.jackrabbit.oak.upgrade.RepositoryUpgrade.DEFAULT_MERGE_PATHS;
 import static org.apache.jackrabbit.oak.upgrade.RepositoryUpgrade.calculateEffectiveIncludePaths;
+import static org.apache.jackrabbit.oak.upgrade.RepositoryUpgrade.markIndexesToBeRebuilt;
 import static org.apache.jackrabbit.oak.upgrade.nodestate.NodeStateCopier.copyProperties;
 import static org.apache.jackrabbit.oak.upgrade.version.VersionCopier.copyVersionStorage;
 
@@ -82,6 +83,8 @@ public class RepositorySidegrade {
     private Set<String> mergePaths = DEFAULT_MERGE_PATHS;
 
     private boolean skipLongNames = true;
+
+    private boolean skipInitialization = false;
 
     private List<CommitHook> customCommitHooks = null;
 
@@ -195,6 +198,16 @@ public class RepositorySidegrade {
     }
 
     /**
+     * Skip the new repository initialization. Only copy content passed in the
+     * {@link #includePaths}.
+     *
+     * @param skipInitialization
+     */
+    public void setSkipInitialization(boolean skipInitialization) {
+        this.skipInitialization = skipInitialization;
+    }
+
+    /**
      * Same as {@link #copy(RepositoryInitializer)}, but with no custom initializer. 
      */
     public void copy() throws RepositoryException {
@@ -219,9 +232,13 @@ public class RepositorySidegrade {
         try {
             NodeBuilder targetRoot = target.getRoot().builder();
 
-            new InitialContent().initialize(targetRoot);
-            if (initializer != null) {
-                initializer.initialize(targetRoot);
+            if (skipInitialization) {
+                LOG.info("Skipping the repository initialization");
+            } else {
+                new InitialContent().initialize(targetRoot);
+                if (initializer != null) {
+                    initializer.initialize(targetRoot);
+                }
             }
 
             final NodeState reportingSourceRoot = ReportingNodeState.wrap(source.getRoot(), new LoggingReporter(LOG, "Copying", 10000, -1));
@@ -259,6 +276,7 @@ public class RepositorySidegrade {
             hooks.addAll(customCommitHooks);
         }
 
+        markIndexesToBeRebuilt(targetRoot);
 
         target.merge(targetRoot, new LoggingCompositeHook(hooks, null, false), CommitInfo.EMPTY);
     }

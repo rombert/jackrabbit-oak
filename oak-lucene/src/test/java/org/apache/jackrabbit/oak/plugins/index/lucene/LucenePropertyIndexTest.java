@@ -53,6 +53,7 @@ import org.apache.jackrabbit.oak.api.Result;
 import org.apache.jackrabbit.oak.api.ResultRow;
 import org.apache.jackrabbit.oak.api.Tree;
 import org.apache.jackrabbit.oak.api.Type;
+import org.apache.jackrabbit.oak.commons.concurrent.ExecutorCloser;
 import org.apache.jackrabbit.oak.plugins.index.IndexConstants;
 import org.apache.jackrabbit.oak.plugins.index.fulltext.ExtractedText;
 import org.apache.jackrabbit.oak.plugins.index.fulltext.ExtractedText.ExtractionResult;
@@ -131,6 +132,11 @@ public class LucenePropertyIndexTest extends AbstractQueryTest {
     private String cowDir = null;
 
     private LuceneIndexEditorProvider editorProvider;
+
+    @After
+    public void after() {
+        new ExecutorCloser(executorService).close();
+    }
 
     @Override
     protected void createTestIndexNode() throws Exception {
@@ -920,6 +926,22 @@ public class LucenePropertyIndexTest extends AbstractQueryTest {
         assertQuery("select [jcr:path] from [nt:base] as s where ISDESCENDANTNODE(s, '/test/test2') and propa = 'a'",
                 asList("/test/test2/test3/a"));
     }
+
+    @Test
+    public void indexDefinitionBelowRoot3() throws Exception {
+        Tree parent = root.getTree("/").addChild("test");
+        Tree idx = createIndex(parent, "test1", of("propa"));
+        idx.addChild(PROP_NODE).addChild("propa");
+        root.commit();
+
+        parent.setProperty("propa", "a");
+        parent.addChild("test1").setProperty("propa", "a");
+        root.commit();
+
+        //asert that (1) result gets returned correctly, (2) parent isn't there, and (3) child is returned
+        assertQuery("select [jcr:path] from [nt:base] as s where ISDESCENDANTNODE(s, '/test') and propa = 'a'", asList("/test/test1"));
+    }
+
     @Test
     public void sortQueriesWithLong() throws Exception {
         Tree idx = createIndex("test1", of("foo", "bar"));
@@ -1998,33 +2020,6 @@ public class LucenePropertyIndexTest extends AbstractQueryTest {
         assertQuery(propabQuery, asList("/test/a"));
     }
 
-    //OAK-4024
-    @Test
-    public void reindexWithCOWWithIndexPath() throws Exception {
-        Tree idx = createIndex("test1", of("propa", "propb"));
-        idx.setProperty(LuceneIndexConstants.INDEX_PATH, "/oak:index/test1");
-        Tree props = TestUtil.newRulePropTree(idx, "mix:title");
-        Tree prop1 = props.addChild(TestUtil.unique("prop"));
-        prop1.setProperty(LuceneIndexConstants.PROP_NAME, "jcr:title");
-        prop1.setProperty(LuceneIndexConstants.PROP_PROPERTY_INDEX, true);
-        root.commit();
-
-        //force CoR
-        executeQuery("SELECT * FROM [mix:title]", SQL2);
-
-        assertNotNull(corDir);
-        String localPathBeforeReindex = corDir;
-
-        //CoW with re-indexing
-        idx.setProperty("reindex", true);
-        root.commit();
-
-        assertNotNull(cowDir);
-        String localPathAfterReindex = cowDir;
-
-        assertNotEquals("CoW should write to different dir on reindexing", localPathBeforeReindex, localPathAfterReindex);
-    }
-
     @Test
     public void reindexWithCOWWithoutIndexPath() throws Exception {
         Tree idx = createIndex("test1", of("propa", "propb"));
@@ -2063,6 +2058,8 @@ public class LucenePropertyIndexTest extends AbstractQueryTest {
         test.setProperty("tag", "stockphotography:business/business_abstract");
         Tree test2 = root.getTree("/").addChild("test2");
         test2.setProperty("tag", "foo!");
+        root.getTree("/").addChild("test3").setProperty("tag", "a=b");
+        root.getTree("/").addChild("test4").setProperty("tag", "c=d=e");
         root.commit();
 
         String propabQuery = "select * from [nt:base] where CONTAINS(tag, " +
@@ -2071,6 +2068,12 @@ public class LucenePropertyIndexTest extends AbstractQueryTest {
 
         String query2 = "select * from [nt:base] where CONTAINS(tag, 'foo!')";
         assertPlanAndQuery(query2, "lucene:test1(/oak:index/test1)", asList("/test2"));
+
+        String query3 = "select * from [nt:base] where CONTAINS(tag, 'a=b')";
+        assertPlanAndQuery(query3, "lucene:test1(/oak:index/test1)", asList("/test3"));
+
+        String query4 = "select * from [nt:base] where CONTAINS(tag, 'c=d=e')";
+        assertPlanAndQuery(query4, "lucene:test1(/oak:index/test1)", asList("/test4"));
 
     }
 

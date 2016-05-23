@@ -21,8 +21,8 @@ package org.apache.jackrabbit.oak.upgrade;
 import org.apache.jackrabbit.oak.Oak;
 import org.apache.jackrabbit.oak.jcr.Jcr;
 import org.apache.jackrabbit.oak.jcr.repository.RepositoryImpl;
-import org.apache.jackrabbit.oak.plugins.segment.SegmentNodeStore;
-import org.apache.jackrabbit.oak.plugins.segment.file.FileStore;
+import org.apache.jackrabbit.oak.segment.SegmentNodeStore;
+import org.apache.jackrabbit.oak.segment.file.FileStore;
 import org.apache.jackrabbit.oak.spi.lifecycle.RepositoryInitializer;
 import org.apache.jackrabbit.oak.spi.state.NodeBuilder;
 import org.apache.jackrabbit.oak.spi.state.NodeStore;
@@ -57,7 +57,7 @@ public class RepeatedRepositorySidegradeTest extends RepeatedRepositoryUpgradeTe
             }
 
             final NodeStore target = getTargetNodeStore();
-            doUpgradeRepository(sourceDir, target);
+            doUpgradeRepository(sourceDir, target, false);
             fileStore.flush();
 
             fileStore = FileStore.builder(sourceDir).build();
@@ -73,7 +73,7 @@ public class RepeatedRepositorySidegradeTest extends RepeatedRepositoryUpgradeTe
                 fileStore.close();
             }
 
-            doUpgradeRepository(sourceDir, target);
+            doUpgradeRepository(sourceDir, target, true);
             fileStore.flush();
 
             upgradeComplete = true;
@@ -81,11 +81,12 @@ public class RepeatedRepositorySidegradeTest extends RepeatedRepositoryUpgradeTe
     }
 
     @Override
-    protected void doUpgradeRepository(File source, NodeStore target) throws RepositoryException, IOException {
+    protected void doUpgradeRepository(File source, NodeStore target, boolean skipInit) throws RepositoryException, IOException {
         FileStore fileStore = FileStore.builder(source).build();
         SegmentNodeStore segmentNodeStore = SegmentNodeStore.builder(fileStore).build();
         try {
             final RepositorySidegrade repositoryUpgrade = new RepositorySidegrade(segmentNodeStore, target);
+            repositoryUpgrade.setSkipInitialization(skipInit);
             repositoryUpgrade.copy(new RepositoryInitializer() {
                 @Override
                 public void initialize(@Nonnull NodeBuilder builder) {
