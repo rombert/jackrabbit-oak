@@ -34,7 +34,6 @@ import static org.apache.jackrabbit.oak.spi.whiteboard.WhiteboardUtils.registerM
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.Dictionary;
 import java.util.HashMap;
@@ -83,7 +82,6 @@ import org.apache.jackrabbit.oak.plugins.identifier.ClusterRepositoryInfo;
 import org.apache.jackrabbit.oak.spi.blob.BlobStore;
 import org.apache.jackrabbit.oak.spi.blob.BlobStoreWrapper;
 import org.apache.jackrabbit.oak.spi.blob.GarbageCollectableBlobStore;
-import org.apache.jackrabbit.oak.spi.mount.Mount;
 import org.apache.jackrabbit.oak.spi.mount.MountInfoProvider;
 import org.apache.jackrabbit.oak.spi.blob.stats.BlobStoreStatsMBean;
 import org.apache.jackrabbit.oak.spi.state.Clusterable;
@@ -478,15 +476,16 @@ public class DocumentNodeStoreService {
             for ( String rawMount : rawMounts ) {
                 List<String> split = Splitter.on(':').splitToList(rawMount);
                 Preconditions.checkArgument(split.size() == 2, "Invalid mount specification: '%s'", rawMount);
-                String mountName = split.get(0).trim();
-                String collectionName = split.get(1).trim();
-                
+
+                String collectionName = split.get(0).trim();
+                String mountName = split.get(1).trim();
+
                 Preconditions.checkArgument(!mountName.isEmpty(), "mountName is empty for mount specification '%s'", rawMount);
                 Preconditions.checkNotNull(mountInfoProvider.getMountByName(mountName), "mount with name '%s' not found in custom mount list '%s'", 
                         mountName, mountInfoProvider.getNonDefaultMounts());
                 Preconditions.checkArgument(!collectionName.isEmpty(), "collectionName is empty for mount specification '%s'", rawMount);
 
-                mounts.put(mountName, collectionName);
+                mounts.put(collectionName, mountName);
             }
 
             if (log.isInfoEnabled()) {
@@ -503,8 +502,11 @@ public class DocumentNodeStoreService {
             }
 
             mkBuilder.setMaxReplicationLag(maxReplicationLagInSecs, TimeUnit.SECONDS);
+            // TODO - remove custom handling and only rely on mountInfoProvider?
             for ( Map.Entry<String, String> entry : mounts.entrySet() ) {
-                mkBuilder.addMongoDbMount(entry.getKey(), uri, db, entry.getValue());
+                String mountName = entry.getValue();
+                String collectionSuffix = entry.getKey().substring(1); // TODO - cleaner removal of leading slash
+                mkBuilder.addMongoDbMount(mountName, uri, db, collectionSuffix);
             }
             mkBuilder.setMountInfoProvider(mountInfoProvider);
             mkBuilder.setMongoDB(uri, db, blobCacheSize);
