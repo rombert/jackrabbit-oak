@@ -37,6 +37,7 @@ import static java.util.concurrent.TimeUnit.MINUTES;
 import static org.apache.jackrabbit.oak.commons.FixturesHelper.Fixture.DOCUMENT_MEM;
 import static org.apache.jackrabbit.oak.commons.FixturesHelper.Fixture.DOCUMENT_NS;
 import static org.apache.jackrabbit.oak.commons.FixturesHelper.Fixture.DOCUMENT_RDB;
+import static org.apache.jackrabbit.oak.commons.FixturesHelper.Fixture.MEMORY_MULTI_NS;
 import static org.apache.jackrabbit.oak.commons.FixturesHelper.getFixtures;
 import static org.apache.jackrabbit.oak.plugins.document.Collection.NODES;
 import static org.apache.jackrabbit.oak.plugins.document.NodeDocument.NUM_REVS_THRESHOLD;
@@ -94,6 +95,10 @@ public class VersionGarbageCollectorIT {
         List<Object[]> fixtures = Lists.newArrayList();
         if (getFixtures().contains(DOCUMENT_MEM)) {
             fixtures.add(new Object[] { new DocumentStoreFixture.MemoryFixture() });
+        }
+        
+        if ( getFixtures().contains(MEMORY_MULTI_NS)) {
+            fixtures.add(new Object[] {new DocumentStoreFixture.MultiplexedMemoryFixture()});
         }
 
         DocumentStoreFixture mongo = new DocumentStoreFixture.MongoFixture();

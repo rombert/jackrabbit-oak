@@ -77,6 +77,7 @@ public class VersionGCWithSplitTest {
     public static java.util.Collection<Object[]> fixtures() throws IOException {
         List<Object[]> fixtures = Lists.newArrayList();
         fixtures.add(new Object[] {new DocumentStoreFixture.MemoryFixture()});
+        fixtures.add(new Object[] {new DocumentStoreFixture.MultiplexedMemoryFixture()});
 
         DocumentStoreFixture mongo = new DocumentStoreFixture.MongoFixture();
         if(mongo.isAvailable()){

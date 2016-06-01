@@ -61,10 +61,11 @@ public class LastRevRecoveryAgentTest {
 
     //----------------------------------------< Set Up >
 
-    @Parameterized.Parameters
+    @Parameterized.Parameters(name="{0}")
     public static java.util.Collection<Object[]> fixtures() throws IOException {
         List<Object[]> fixtures = Lists.newArrayList();
         fixtures.add(new Object[] {new DocumentStoreFixture.MemoryFixture()});
+        fixtures.add(new Object[] {new DocumentStoreFixture.MultiplexedMemoryFixture()});
 
         DocumentStoreFixture rdb = new RDBFixture("RDB-H2(file)", "jdbc:h2:file:./target/ds-test", "sa", "");
         if (rdb.isAvailable()) {

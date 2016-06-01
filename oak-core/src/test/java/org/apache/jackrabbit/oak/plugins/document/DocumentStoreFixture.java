@@ -30,6 +30,8 @@ import org.apache.jackrabbit.oak.plugins.document.rdb.RDBDataSourceWrapper;
 import org.apache.jackrabbit.oak.plugins.document.rdb.RDBDocumentStore;
 import org.apache.jackrabbit.oak.plugins.document.rdb.RDBOptions;
 import org.apache.jackrabbit.oak.plugins.document.util.MongoConnection;
+import org.apache.jackrabbit.oak.plugins.multiplex.SimpleMountInfoProvider;
+import org.apache.jackrabbit.oak.spi.mount.MountInfoProvider;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -39,6 +41,7 @@ import com.mongodb.DB;
 import static org.apache.jackrabbit.oak.commons.FixturesHelper.Fixture.DOCUMENT_MEM;
 import static org.apache.jackrabbit.oak.commons.FixturesHelper.Fixture.DOCUMENT_NS;
 import static org.apache.jackrabbit.oak.commons.FixturesHelper.Fixture.DOCUMENT_RDB;
+import static org.apache.jackrabbit.oak.commons.FixturesHelper.Fixture.MEMORY_MULTI_NS;
 
 public abstract class DocumentStoreFixture {
 
@@ -46,6 +49,7 @@ public abstract class DocumentStoreFixture {
 
     public static final DocumentStoreFixture MEMORY = new MemoryFixture();
     public static final DocumentStoreFixture MONGO = new MongoFixture();
+    public static final DocumentStoreFixture MEMORY_MULTIPLEXED = new MultiplexedMemoryFixture();
 
     public static final DocumentStoreFixture RDB_DB2 = new RDBFixture("RDB-DB2", System.getProperty("rdb-db2-jdbc-url",
             "jdbc:db2://localhost:50000/OAK"), System.getProperty("rdb-db2-jdbc-user", "oak"), System.getProperty(
@@ -75,6 +79,10 @@ public abstract class DocumentStoreFixture {
         List<Object[]> fixtures = Lists.newArrayList();
         if (FixturesHelper.getFixtures().contains(DOCUMENT_MEM)) {
             fixtures.add(new Object[] { new DocumentStoreFixture.MemoryFixture() });
+        }
+        
+        if (FixturesHelper.getFixtures().contains(MEMORY_MULTI_NS)) {
+            fixtures.add(new Object[] { new DocumentStoreFixture.MultiplexedMemoryFixture() });
         }
 
         DocumentStoreFixture mongo = new DocumentStoreFixture.MongoFixture();
@@ -134,6 +142,33 @@ public abstract class DocumentStoreFixture {
         public boolean hasSinglePersistence() {
             return false;
         }
+    }
+    
+    public static class MultiplexedMemoryFixture extends DocumentStoreFixture {
+        
+        @Override
+        public String getName() {
+            return "MultiplexedMemory";
+        }
+        
+        @Override
+        public boolean hasSinglePersistence() {
+            return false;
+        }
+        
+        @Override
+        public DocumentStore createDocumentStore(int clusterId) {
+            MountInfoProvider mip = SimpleMountInfoProvider.newBuilder()
+                    .mount("tmp", "/tmp")
+                    .build();
+            
+            DocumentMK.Builder builder = new DocumentMK.Builder();
+            builder.setMountInfoProvider(mip);
+            builder.addMemoryMount("tmp");
+
+            return builder.getDocumentStore();
+        }
+        
     }
 
     public static class RDBFixture extends DocumentStoreFixture {
