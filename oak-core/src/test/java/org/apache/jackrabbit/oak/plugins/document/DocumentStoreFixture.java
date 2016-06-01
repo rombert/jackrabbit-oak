@@ -162,11 +162,13 @@ public abstract class DocumentStoreFixture {
                     .mount("tmp", "/tmp")
                     .build();
             
-            DocumentMK.Builder builder = new DocumentMK.Builder();
-            builder.setMountInfoProvider(mip);
-            builder.addMemoryMount("tmp");
-
-            return builder.getDocumentStore();
+            DocumentStore rootStore = new MemoryDocumentStore();
+            DocumentStore subStore = new MemoryDocumentStore();
+            
+            return new MultiplexingDocumentStore.Builder(mip)
+                .root(rootStore)
+                .mount("tmp", subStore)
+                .build();
         }
         
     }
