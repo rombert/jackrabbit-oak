@@ -426,7 +426,7 @@ public class MultiplexingDocumentStore implements DocumentStore {
             
             checkNotNull(store);
             Mount mount = mountInfoProvider.getMountByName(name);
-            checkNotNull("Not mount by name '%s' defined", mount);
+            checkNotNull(mount, "Not mount by name '%s' defined", name);
             
             mounts.add(new DocumentStoreMount(store, mount));
             
