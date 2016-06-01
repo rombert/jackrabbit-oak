@@ -4,6 +4,7 @@ import static org.hamcrest.CoreMatchers.is;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThat;
 
+import org.hamcrest.CoreMatchers;
 import org.junit.Test;
 
 public class DocumentKeyTest {
@@ -40,4 +41,16 @@ public class DocumentKeyTest {
         
         assertThat(DocumentKey.fromPath(LONG_PATH).getPath(), is(LONG_PATH));
     }
+    
+    @Test
+    public void fromMinId() {
+        
+        assertThat(DocumentKey.fromKey(NodeDocument.MIN_ID_VALUE).getPath(), CoreMatchers.nullValue());
+    }
+    
+    @Test
+    public void fromMaxId() {
+        
+        assertThat(DocumentKey.fromKey(NodeDocument.MAX_ID_VALUE).getPath(), CoreMatchers.nullValue());
+    }    
 }

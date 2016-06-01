@@ -203,7 +203,7 @@ public class MultiplexingDocumentStore implements DocumentStore {
         
         List<DocumentStore> contained = Lists.newArrayListWithCapacity(mounts.size());
         
-        if ( from.getPath() != null ) {
+        if ( from.getPath() != null && to.getPath() != null) {
 
             String parentId = Utils.getParentId(from.getPath());
             if (parentId != null && parentId.equals(Utils.getParentId(to.getPath()))) {
@@ -426,7 +426,7 @@ public class MultiplexingDocumentStore implements DocumentStore {
             
             checkNotNull(store);
             Mount mount = mountInfoProvider.getMountByName(name);
-            checkNotNull("Not mount by name '%s' defined", name);
+            checkNotNull("Not mount by name '%s' defined", mount);
             
             mounts.add(new DocumentStoreMount(store, mount));
             

@@ -17,9 +17,12 @@ public class DocumentKey {
      * @return the DocumentKey
      */
     public static DocumentKey fromKey(@Nonnull String key) {
-        if ( Utils.isIdFromLongPath(key)) {
+        
+        if ( Utils.isIdFromLongPath(key) || NodeDocument.MIN_ID_VALUE.equals(key)
+                || NodeDocument.MAX_ID_VALUE.equals(key)) {
             return new DocumentKey(key, null);
         }
+        
         return new DocumentKey(key, Utils.getPathFromId(key));
     }
 

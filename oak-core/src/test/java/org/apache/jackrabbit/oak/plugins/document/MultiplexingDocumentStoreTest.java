@@ -19,6 +19,7 @@ import org.apache.jackrabbit.oak.plugins.document.UpdateOp.Key;
 import org.apache.jackrabbit.oak.plugins.document.memory.MemoryDocumentStore;
 import org.apache.jackrabbit.oak.plugins.multiplex.SimpleMountInfoProvider;
 import org.apache.jackrabbit.oak.spi.mount.MountInfoProvider;
+import org.hamcrest.CoreMatchers;
 import org.hamcrest.Description;
 import org.junit.Before;
 import org.junit.Test;
@@ -132,6 +133,30 @@ public class MultiplexingDocumentStoreTest {
         
         assertThat(nodes, NodeListMatcher.nodeListWithKeys("1:/1a"));
     }
+    
+    @Test
+    public void query_minValue() {
+        
+        List<NodeDocument> nodes = store.query(Collection.NODES, NodeDocument.MIN_ID_VALUE, "1:/1b", 10);
+        
+        assertThat(nodes, NodeListMatcher.nodeListWithKeys("0:/", "1:/1a"));
+    }
+
+    @Test
+    public void query_maxValue() {
+        
+        List<NodeDocument> nodes = store.query(Collection.NODES, "1:/1c", NodeDocument.MAX_ID_VALUE, 10);
+        
+        assertThat(nodes, NodeListMatcher.nodeListWithKeys("1:/1d", "1:/1e"));
+    }
+    
+    @Test
+    public void query_minAndmaxValue() {
+        
+        List<NodeDocument> nodes = store.query(Collection.NODES, NodeDocument.MIN_ID_VALUE, NodeDocument.MAX_ID_VALUE, 10);
+        
+        assertThat(nodes.size(), CoreMatchers.equalTo(6));
+    }      
     
     @Test
     public void remove_matchingInRootStore() {
