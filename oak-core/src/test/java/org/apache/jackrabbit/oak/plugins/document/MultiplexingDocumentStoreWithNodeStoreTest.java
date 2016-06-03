@@ -30,6 +30,7 @@ public class MultiplexingDocumentStoreWithNodeStoreTest {
     
     private ContentRepository repo;
     private MongoConnection connection;
+    private DocumentNodeStore store;
 
     @Before
     public void createContentRepository() throws Exception{
@@ -48,15 +49,20 @@ public class MultiplexingDocumentStoreWithNodeStoreTest {
         builder.addMongoDbMount("tmp", "mongodb://localhost:27017/oak", "oak", "private");
         builder.setMongoDB(connection.getDB(), 1);
 
-        DocumentNodeStore store = new DocumentNodeStore(builder);
+        store = new DocumentNodeStore(builder);
 
         // 3. Create the Oak instance
         repo = new Oak(store).with(new OpenSecurityProvider()).createContentRepository();        
     }
     
     @After
-    public void dropMongoDatabase() {
-        
+    public void cleanup() {
+        if ( store != null ) {
+            store.dispose();
+        }
+    }
+
+    private void dropMongoDatabase() {
         if ( connection != null ) {
             connection.getDB().dropDatabase();
         }
