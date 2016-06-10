@@ -2,9 +2,6 @@ package org.apache.jackrabbit.oak.plugins.document;
 
 import static org.junit.Assert.assertTrue;
 
-import java.net.UnknownHostException;
-import java.util.Map;
-
 import javax.jcr.SimpleCredentials;
 
 import org.apache.jackrabbit.oak.Oak;
@@ -12,7 +9,6 @@ import org.apache.jackrabbit.oak.api.ContentRepository;
 import org.apache.jackrabbit.oak.api.ContentSession;
 import org.apache.jackrabbit.oak.api.Root;
 import org.apache.jackrabbit.oak.api.Tree;
-import org.apache.jackrabbit.oak.plugins.document.util.MongoConnection;
 import org.apache.jackrabbit.oak.plugins.multiplex.SimpleMountInfoProvider;
 import org.apache.jackrabbit.oak.spi.mount.MountInfoProvider;
 import org.apache.jackrabbit.oak.spi.security.OpenSecurityProvider;
@@ -20,16 +16,9 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
-import com.google.common.collect.Maps;
-import com.mongodb.DB;
-import com.mongodb.MongoClient;
-import com.mongodb.MongoClientOptions;
-import com.mongodb.MongoClientURI;
-
 public class MultiplexingDocumentStoreWithNodeStoreTest {
     
     private ContentRepository repo;
-    private MongoConnection connection;
     private DocumentNodeStore store;
 
     @Before
@@ -39,19 +28,14 @@ public class MultiplexingDocumentStoreWithNodeStoreTest {
                 .mount("tmp", "/tmp")
                 .build();
         
-        // 1. Connect to MongoDB
-        connection = new MongoConnection("mongodb://localhost:27017/oak");
-        dropMongoDatabase();
-        
-        // 2. configure the DocumentNodeStore with a multiplexing document store, with a mount at "/tmp"
+        // 1. configure the DocumentNodeStore with a multiplexing document store, with a mount at "/tmp"
         DocumentMK.Builder builder = new DocumentMK.Builder();
         builder.setMountInfoProvider(mip);
-        builder.addMongoDbMount("tmp", "mongodb://localhost:27017/oak", "oak", "private");
-        builder.setMongoDB(connection.getDB(), 1);
+        builder.addMemoryMount("tmp");
 
         store = new DocumentNodeStore(builder);
 
-        // 3. Create the Oak instance
+        // 2. Create the Oak instance
         repo = new Oak(store).with(new OpenSecurityProvider()).createContentRepository();        
     }
     
@@ -59,12 +43,6 @@ public class MultiplexingDocumentStoreWithNodeStoreTest {
     public void cleanup() {
         if ( store != null ) {
             store.dispose();
-        }
-    }
-
-    private void dropMongoDatabase() {
-        if ( connection != null ) {
-            connection.getDB().dropDatabase();
         }
     }
 
@@ -124,46 +102,10 @@ public class MultiplexingDocumentStoreWithNodeStoreTest {
                     .mount("extra", "/extra")
                     .build();
             
-            try {
-                boolean useMultiplexing = true;
-                boolean dropDatabase = true;
-                
-                String db = "oak-test-mpx-" + useMultiplexing;
-                String uri = "mongodb://localhost:27017/" + db;
-                
-                DocumentMK.Builder mkBuilder = new DocumentMK.Builder();
-                mkBuilder.setMountInfoProvider(mip);
+            DocumentMK.Builder mkBuilder = new DocumentMK.Builder();
+            mkBuilder.setMountInfoProvider(mip);
 
-                MongoClientOptions.Builder builder = MongoConnection.getDefaultBuilder();
-                MongoClientURI mongoURI = new MongoClientURI(uri, builder);
-
-                MongoClient client;
-                try {
-                    client = new MongoClient(mongoURI);
-                } catch (UnknownHostException e) {
-                    throw new RuntimeException(e);
-                }
-                DB mongoDB = client.getDB(db);
-
-                if ( dropDatabase) {
-                    mongoDB.dropDatabase();
-                }
-
-                if ( useMultiplexing ) {
-                    Map<String, String> mounts = Maps.newLinkedHashMap();
-                    mounts.put("extra", "extra");
-                    
-                    for (Map.Entry<String, String> entry : mounts.entrySet()) {
-                        mkBuilder.addMongoDbMount(entry.getKey(), uri, db, entry.getValue());
-                    }
-                }
-
-                mkBuilder.setMongoDB(uri, db, 256);
-
-                mk = mkBuilder.open();
-            } catch (UnknownHostException e) {
-                throw new RuntimeException(e);
-            }                
+            mk = mkBuilder.open();
         }
     }
 }
