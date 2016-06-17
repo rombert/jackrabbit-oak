@@ -42,8 +42,6 @@ public final class UpdateOp {
     private final Map<Key, Operation> changes;
     private Map<Key, Condition> conditions;
     
-    String splitFrom;
-
     /**
      * Create an update operation for the document with the given id. The commit
      * root is assumed to be the path, unless this is changed later on.

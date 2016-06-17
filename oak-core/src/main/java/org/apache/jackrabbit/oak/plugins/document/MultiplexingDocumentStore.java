@@ -101,9 +101,9 @@ public class MultiplexingDocumentStore implements DocumentStore {
         if(op != null) {
             // If a long path was transformed to a hash, use the original path here
             key = DocumentKey.fromPath(op.value.toString());
-        } else if  ( update.splitFrom != null ){
+        } else if  ( Utils.isPreviousDocId(update.id) ){
             // For split documents, use the originator document's id
-            key = DocumentKey.fromKey(update.splitFrom);
+            key = DocumentKey.fromKey(Utils.getOriginatingId(update.id));
         } else { 
             // Otherwise, we build from the id
             key = DocumentKey.fromKey(update.getId());

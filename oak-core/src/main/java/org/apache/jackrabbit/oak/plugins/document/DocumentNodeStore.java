@@ -2042,10 +2042,6 @@ public final class DocumentNodeStore
 
             for (UpdateOp op : doc.split(this, head, isBinary)) {
                 
-                // STOP LOOKING
-                op.splitFrom = doc.getId();
-                // START LOOKING AGAIN
-
                 NodeDocument before = null;
                 if (!op.isNew() ||
                         !store.create(Collection.NODES, Collections.singletonList(op))) {
