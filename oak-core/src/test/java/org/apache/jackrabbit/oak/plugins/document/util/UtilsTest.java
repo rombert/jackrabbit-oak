@@ -235,4 +235,17 @@ public class UtilsTest {
         assertEquals(4, Utils.getMinTimestampForDiff(to, from, minRevs));
 
     }
+    
+    @Test
+    public void getOriginatingId() {
+        
+        Revision r = new Revision(System.currentTimeMillis(), 0, 0);
+        
+        String[] paths = new String [] { "/", "/one", "/one/two" };
+        
+        for ( int depth =0 ; depth < paths.length; depth++ ) {
+            String previousId = Utils.getPreviousIdFor(paths[depth], r, depth);
+            assertEquals(Utils.getIdFromPath(paths[depth]), Utils.getOriginatingId(previousId));
+        }
+    }
 }

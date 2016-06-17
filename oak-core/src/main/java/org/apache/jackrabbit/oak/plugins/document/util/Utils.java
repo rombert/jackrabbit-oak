@@ -758,4 +758,44 @@ public class Utils {
         }
         return min;
     }
+
+    /**
+     * Gets the originating id from a id beloging to a previous document
+     * 
+     * @param previousId the id of the previous document
+     * @return the id of the originating document
+     * @see #getPreviousIdFor(String, Revision, int)
+     * @throws IllegalArgumentException if the <tt>previousId</tt> does not belong to a previous document
+     */
+    public static String getOriginatingId(String previousId) {
+        
+        if ( !isPreviousDocId(previousId)) {
+            throw new IllegalArgumentException("Document id " + previousId + " does not belong to a previous document.");
+        }
+        
+        int colonIdx = previousId.indexOf(':');
+        int occurences = 0;
+        int slashIdx = -1;
+        for ( int i = previousId.length() - 1; i >= 0; i-- ) {
+            if ( previousId.charAt(i) == '/') {
+                occurences++;
+                
+                // one before the height, one before the revision
+                if ( occurences == 2 ) {
+                    slashIdx = i;
+                    break;
+                }
+                
+            }
+        }
+        
+        // colonIdx + 2 -> position right after :p
+        // slashIdx + 1 -> position right after the last slash, inclusive
+        String originatingPath  = previousId.substring(colonIdx + 2, slashIdx + 1);
+        if ( originatingPath.length() > 1 && originatingPath.endsWith("/")) {
+            originatingPath = originatingPath.substring(0, originatingPath.length() - 1);
+        }
+        
+        return getIdFromPath(originatingPath);
+    }
 }
