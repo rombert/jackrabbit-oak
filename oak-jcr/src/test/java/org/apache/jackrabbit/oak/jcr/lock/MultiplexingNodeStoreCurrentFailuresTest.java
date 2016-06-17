@@ -8,7 +8,6 @@ import java.net.UnknownHostException;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.Map;
 
 import javax.jcr.LoginException;
 import javax.jcr.Node;
@@ -22,7 +21,6 @@ import org.apache.jackrabbit.oak.jcr.Jcr;
 import org.apache.jackrabbit.oak.plugins.commit.JcrConflictHandler;
 import org.apache.jackrabbit.oak.plugins.document.DocumentMK;
 import org.apache.jackrabbit.oak.plugins.document.DocumentNodeStore;
-import org.apache.jackrabbit.oak.plugins.document.util.MongoConnection;
 import org.apache.jackrabbit.oak.plugins.index.IndexConstants;
 import org.apache.jackrabbit.oak.plugins.index.IndexUtils;
 import org.apache.jackrabbit.oak.plugins.multiplex.SimpleMountInfoProvider;
@@ -36,12 +34,6 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
 import org.junit.runners.Parameterized.Parameters;
-
-import com.google.common.collect.Maps;
-import com.mongodb.DB;
-import com.mongodb.MongoClient;
-import com.mongodb.MongoClientOptions;
-import com.mongodb.MongoClientURI;
 
 @RunWith(Parameterized.class)
 public class MultiplexingNodeStoreCurrentFailuresTest {
@@ -65,7 +57,7 @@ public class MultiplexingNodeStoreCurrentFailuresTest {
     @Before
     public void prepare() throws Exception {
 
-        initRepo(true);
+        initRepo();
         
         Session session = getAdminSession();
 
@@ -89,36 +81,16 @@ public class MultiplexingNodeStoreCurrentFailuresTest {
     }
         
 
-    private void initRepo(boolean dropDatabase) throws UnknownHostException {
-        String db = "oak-test-mpx-" + useMultiplexing;
-        String uri = "mongodb://localhost:27017/" + db;
-        
+    private void initRepo() throws UnknownHostException {
         DocumentMK.Builder mkBuilder = new DocumentMK.Builder();
-
-        MongoClientOptions.Builder builder = MongoConnection.getDefaultBuilder();
-        MongoClientURI mongoURI = new MongoClientURI(uri, builder);
-
-        MongoClient client = new MongoClient(mongoURI);
-        DB mongoDB = client.getDB(db);
-
-        if ( dropDatabase) {
-            mongoDB.dropDatabase();
-        }
 
         if ( useMultiplexing ) {
             MountInfoProvider mip = SimpleMountInfoProvider.newBuilder()
                     .mount("extra", "/extra")
                     .build();
             mkBuilder.setMountInfoProvider(mip);
-            Map<String, String> mounts = Maps.newLinkedHashMap();
-            mounts.put("extra", "extra");
-            
-            for (Map.Entry<String, String> entry : mounts.entrySet()) {
-                mkBuilder.addMongoDbMount(entry.getKey(), uri, db, entry.getValue());
-            }
+            mkBuilder.addMemoryMount("extra");
         }
-
-        mkBuilder.setMongoDB(mongoDB, 256);
 
         nodeStore = mkBuilder.open().getNodeStore();
         
