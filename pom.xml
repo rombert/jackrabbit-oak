@@ -38,6 +38,7 @@
   <modules>
     <module>oak-parent</module>
     <module>oak-commons</module>
+    <module>oak-api</module>
     <module>oak-blob</module>
     <module>oak-blob-cloud</module>
     <module>oak-blob-cloud-azure</module>

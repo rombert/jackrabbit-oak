@@ -93,7 +93,11 @@
     <dependencies>
 
         <!-- Dependencies on Oak modules -->
-
+        <dependency>
+            <groupId>org.apache.jackrabbit</groupId>
+            <artifactId>oak-api</artifactId>
+            <version>${project.version}</version>
+        </dependency>
         <dependency>
             <groupId>org.apache.jackrabbit</groupId>
             <artifactId>oak-commons</artifactId>
