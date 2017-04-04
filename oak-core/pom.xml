@@ -44,8 +44,6 @@
             </Import-Package>
             <Export-Package>
               org.apache.jackrabbit.oak,
-              org.apache.jackrabbit.oak.api,
-              org.apache.jackrabbit.oak.api.jmx,
               org.apache.jackrabbit.oak.cache,
               org.apache.jackrabbit.oak.stats,
               org.apache.jackrabbit.oak.json,
@@ -168,6 +166,11 @@
     </dependency>
 
     <!-- Dependencies to other Oak components -->
+    <dependency>
+      <groupId>org.apache.jackrabbit</groupId>
+      <artifactId>oak-api</artifactId>
+      <version>${project.version}</version>
+    </dependency>
     <dependency>
       <groupId>org.apache.jackrabbit</groupId>
       <artifactId>oak-commons</artifactId>
