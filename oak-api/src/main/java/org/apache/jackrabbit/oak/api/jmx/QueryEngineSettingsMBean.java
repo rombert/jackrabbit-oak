@@ -16,8 +16,6 @@
  */
 package org.apache.jackrabbit.oak.api.jmx;
 
-import org.apache.jackrabbit.oak.commons.jmx.Description;
-
 import aQute.bnd.annotation.ProviderType;
 
 @ProviderType

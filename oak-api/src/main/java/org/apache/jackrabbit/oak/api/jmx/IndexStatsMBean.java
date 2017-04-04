@@ -21,8 +21,6 @@ import javax.management.openmbean.CompositeData;
 import javax.management.openmbean.TabularData;
 
 import aQute.bnd.annotation.ProviderType;
-import org.apache.jackrabbit.oak.commons.jmx.Description;
-import org.apache.jackrabbit.oak.commons.jmx.Name;
 
 @ProviderType
 public interface IndexStatsMBean {

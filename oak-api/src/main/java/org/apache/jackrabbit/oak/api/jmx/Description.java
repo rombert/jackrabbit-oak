@@ -16,7 +16,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-package org.apache.jackrabbit.oak.commons.jmx;
+package org.apache.jackrabbit.oak.api.jmx;
 
 import java.lang.annotation.Documented;
 import java.lang.annotation.ElementType;
@@ -28,16 +28,16 @@ import java.lang.annotation.Target;
 import javax.management.DescriptorKey;
 
 /**
- * Produces a parameter name that will be returned by JMX
- * {@link javax.management.MBeanParameterInfo#getName()}.
+ * Produces a description that will be used by JMX metadata.
  */
-@Target({ElementType.PARAMETER})
+@Target({ElementType.TYPE, ElementType.CONSTRUCTOR, ElementType.METHOD,
+        ElementType.PARAMETER})
 @Retention(RetentionPolicy.RUNTIME)
 @Inherited
 @Documented
-public @interface Name {
-    String NAME = "name";
+public @interface Description {
+    String NAME = "description";
 
     @DescriptorKey(NAME)
-    String value();
+    String value() default "";
 }

@@ -25,6 +25,11 @@ import javax.management.MBeanOperationInfo;
 import javax.management.MBeanParameterInfo;
 import javax.management.StandardMBean;
 
+import org.apache.jackrabbit.oak.api.jmx.Description;
+import org.apache.jackrabbit.oak.api.jmx.Impact;
+import org.apache.jackrabbit.oak.api.jmx.ImpactOption;
+import org.apache.jackrabbit.oak.api.jmx.Name;
+
 /**
  * The extension of {@link javax.management.StandardMBean} that will automatically provide JMX
  * metadata through annotations.

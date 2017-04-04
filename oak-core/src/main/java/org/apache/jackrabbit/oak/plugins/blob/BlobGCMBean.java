@@ -19,12 +19,12 @@
 
 package org.apache.jackrabbit.oak.plugins.blob;
 
-import org.apache.jackrabbit.oak.commons.jmx.Description;
-import org.apache.jackrabbit.oak.commons.jmx.Name;
-
 import javax.annotation.Nonnull;
 import javax.management.openmbean.CompositeData;
 import javax.management.openmbean.TabularData;
+
+import org.apache.jackrabbit.oak.api.jmx.Description;
+import org.apache.jackrabbit.oak.api.jmx.Name;
 
 /**
  * MBean for starting and monitoring the progress of

@@ -27,6 +27,10 @@ import javax.management.MBeanParameterInfo;
 import javax.management.MBeanServer;
 import javax.management.ObjectName;
 
+import org.apache.jackrabbit.oak.api.jmx.Description;
+import org.apache.jackrabbit.oak.api.jmx.Impact;
+import org.apache.jackrabbit.oak.api.jmx.ImpactOption;
+import org.apache.jackrabbit.oak.api.jmx.Name;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;

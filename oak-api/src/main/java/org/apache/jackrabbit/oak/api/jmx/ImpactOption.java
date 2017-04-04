@@ -17,7 +17,7 @@
  * under the License.
  */
 
-package org.apache.jackrabbit.oak.commons.jmx;
+package org.apache.jackrabbit.oak.api.jmx;
 
 import javax.management.MBeanOperationInfo;
 
