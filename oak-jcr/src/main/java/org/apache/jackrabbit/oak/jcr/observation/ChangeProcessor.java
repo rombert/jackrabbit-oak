@@ -26,7 +26,6 @@ import static org.apache.jackrabbit.api.stats.RepositoryStatistics.Type.OBSERVAT
 import static org.apache.jackrabbit.oak.plugins.observation.ChangeCollectorProvider.COMMIT_CONTEXT_OBSERVATION_CHANGESET;
 import static org.apache.jackrabbit.oak.plugins.observation.filter.VisibleFilter.VISIBLE_FILTER;
 import static org.apache.jackrabbit.oak.spi.whiteboard.WhiteboardUtils.registerMBean;
-import static org.apache.jackrabbit.oak.spi.whiteboard.WhiteboardUtils.registerObserver;
 import static org.apache.jackrabbit.oak.spi.whiteboard.WhiteboardUtils.scheduleWithFixedDelay;
 
 import java.util.Map;
