@@ -45,7 +45,6 @@
             <Export-Package>
               org.apache.jackrabbit.oak,
               org.apache.jackrabbit.oak.cache,
-              org.apache.jackrabbit.oak.stats,
               org.apache.jackrabbit.oak.json,
               org.apache.jackrabbit.oak.management,
               org.apache.jackrabbit.oak.util,
