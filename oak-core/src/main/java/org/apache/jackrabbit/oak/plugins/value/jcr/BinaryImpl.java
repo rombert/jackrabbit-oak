@@ -14,7 +14,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.jackrabbit.oak.plugins.value;
+package org.apache.jackrabbit.oak.plugins.value.jcr;
 
 import static com.google.common.base.Objects.toStringHelper;
 
@@ -24,9 +24,13 @@ import java.io.InputStream;
 import javax.annotation.CheckForNull;
 import javax.jcr.PropertyType;
 import javax.jcr.RepositoryException;
+import javax.jcr.Value;
 
 import com.google.common.base.Objects;
 import org.apache.jackrabbit.api.ReferenceBinary;
+import org.apache.jackrabbit.oak.api.Blob;
+import org.apache.jackrabbit.oak.plugins.value.BinaryBasedBlob;
+import org.apache.jackrabbit.oak.plugins.value.OakValue;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -50,7 +54,7 @@ class BinaryImpl implements ReferenceBinary {
 
     @Override
     public InputStream getStream() throws RepositoryException {
-        return value.getBlob().getNewStream();
+        return getBlob(value).getNewStream();
     }
 
     @Override
@@ -74,7 +78,7 @@ class BinaryImpl implements ReferenceBinary {
             // need to respect namespace remapping
             return value.getString().length();
         default:
-            return value.getBlob().length();
+            return getBlob(value).length();
         }
     }
 
@@ -88,7 +92,7 @@ class BinaryImpl implements ReferenceBinary {
     @Override @CheckForNull
     public String getReference() {
         try {
-            return value.getBlob().getReference();
+            return getBlob(value).getReference();
         } catch (RepositoryException e) {
             LOG.warn("Error getting binary reference", e);
             return null;
@@ -112,5 +116,13 @@ class BinaryImpl implements ReferenceBinary {
     @Override
     public String toString() {
         return toStringHelper(this).addValue(value).toString();
+    }
+
+    private static Blob getBlob(Value value) throws RepositoryException {
+        if (value instanceof OakValue) {
+            return ((OakValue) value).getBlob();
+        } else {
+            return new BinaryBasedBlob(value.getBinary());
+        }
     }
 }

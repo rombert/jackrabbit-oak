@@ -26,7 +26,6 @@ import org.apache.jackrabbit.oak.api.Blob;
 import org.apache.jackrabbit.oak.api.PropertyState;
 import org.apache.jackrabbit.oak.api.Type;
 import org.apache.jackrabbit.oak.plugins.value.Conversions;
-import org.apache.jackrabbit.oak.plugins.value.ValueImpl;
 import org.apache.jackrabbit.oak.plugins.value.Conversions.Converter;
 
 public class BinaryPropertyState extends SinglePropertyState<Blob> {
@@ -80,7 +79,7 @@ public class BinaryPropertyState extends SinglePropertyState<Blob> {
      */
     public static PropertyState binaryProperty(
             @Nonnull String name, @Nonnull Value value) throws RepositoryException {
-        return new BinaryPropertyState(name, ValueImpl.getBlob(value));
+        return new BinaryPropertyState(name, getBlob(value));
     }
 
     @Override

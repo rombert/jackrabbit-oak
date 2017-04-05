@@ -17,7 +17,7 @@
  * under the License.
  */
 
-package org.apache.jackrabbit.oak.spi.state;
+package org.apache.jackrabbit.oak.management;
 
 import static com.google.common.base.Preconditions.checkNotNull;
 import static org.apache.jackrabbit.oak.management.ManagementOperation.Status.failed;
@@ -33,12 +33,14 @@ import javax.management.openmbean.CompositeData;
 
 import com.google.common.base.Supplier;
 import com.google.common.base.Suppliers;
-import org.apache.jackrabbit.oak.management.ManagementOperation;
+import org.apache.jackrabbit.oak.spi.state.RevisionGCMBean;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
  * Default implementation of {@link RevisionGCMBean} based on a {@code Runnable}.
+ *
+ * FIXME m12n: moved from spi.state (now in oak-store) to oak.management package due to dependency to ManagementOperation.
  */
 public class RevisionGC implements RevisionGCMBean {
     private static final Logger log = LoggerFactory.getLogger(RevisionGC.class);

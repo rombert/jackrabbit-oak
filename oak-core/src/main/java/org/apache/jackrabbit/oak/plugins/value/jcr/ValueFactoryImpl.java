@@ -14,10 +14,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.jackrabbit.oak.plugins.value;
+package org.apache.jackrabbit.oak.plugins.value.jcr;
 
 import static com.google.common.base.Preconditions.checkNotNull;
-import static org.apache.jackrabbit.oak.plugins.value.ValueImpl.newValue;
+import static org.apache.jackrabbit.oak.plugins.value.jcr.ValueImpl.newValue;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -55,6 +55,8 @@ import org.apache.jackrabbit.oak.plugins.memory.GenericPropertyState;
 import org.apache.jackrabbit.oak.plugins.memory.LongPropertyState;
 import org.apache.jackrabbit.oak.plugins.memory.PropertyStates;
 import org.apache.jackrabbit.oak.plugins.memory.StringPropertyState;
+import org.apache.jackrabbit.oak.plugins.value.Conversions;
+import org.apache.jackrabbit.oak.plugins.value.ErrorValue;
 import org.apache.jackrabbit.oak.spi.query.PropertyValues;
 import org.apache.jackrabbit.oak.util.PerfLogger;
 import org.apache.jackrabbit.util.ISO8601;
@@ -90,7 +92,7 @@ public class ValueFactoryImpl implements ValueFactory {
      * @throws IllegalArgumentException if {@code property.isArray()} is {@code true}.
      */
     public static Value createValue(PropertyState property, NamePathMapper namePathMapper) {
-        return newValue(property, namePathMapper);
+        return ValueImpl.newValue(property, namePathMapper);
     }
 
     /**
@@ -107,7 +109,7 @@ public class ValueFactoryImpl implements ValueFactory {
         if (ps == null) {
             throw new IllegalArgumentException("Failed to convert the specified property value to a property state.");
         }
-        return newValue(ps, namePathMapper);
+        return ValueImpl.newValue(ps, namePathMapper);
     }
 
     /**
@@ -120,7 +122,7 @@ public class ValueFactoryImpl implements ValueFactory {
     public static List<Value> createValues(PropertyState property, NamePathMapper namePathMapper) {
         List<Value> values = Lists.newArrayList();
         for (int i = 0; i < property.count(); i++) {
-            values.add(newValue(property, i, namePathMapper));
+            values.add(ValueImpl.newValue(property, i, namePathMapper));
         }
         return values;
     }
@@ -133,7 +135,7 @@ public class ValueFactoryImpl implements ValueFactory {
     public List<Value> createValues(PropertyState property) {
         List<Value> values = Lists.newArrayList();
         for (int i = 0; i < property.count(); i++) {
-            values.add(newValue(property, i, namePathMapper));
+            values.add(ValueImpl.newValue(property, i, namePathMapper));
         }
         return values;
     }
@@ -142,7 +144,7 @@ public class ValueFactoryImpl implements ValueFactory {
 
     @Override
     public Value createValue(String value) {
-        return newValue(StringPropertyState.stringProperty("", value), namePathMapper);
+        return ValueImpl.newValue(StringPropertyState.stringProperty("", value), namePathMapper);
     }
 
     @Override
@@ -179,22 +181,22 @@ public class ValueFactoryImpl implements ValueFactory {
 
     @Override
     public Value createValue(long value) {
-        return newValue(LongPropertyState.createLongProperty("", value), namePathMapper);
+        return ValueImpl.newValue(LongPropertyState.createLongProperty("", value), namePathMapper);
     }
 
     @Override
     public Value createValue(double value) {
-        return newValue(DoublePropertyState.doubleProperty("", value), namePathMapper);
+        return ValueImpl.newValue(DoublePropertyState.doubleProperty("", value), namePathMapper);
     }
 
     @Override
     public Value createValue(Calendar value) {
-        return newValue(PropertyStates.createProperty("", value), namePathMapper);
+        return ValueImpl.newValue(PropertyStates.createProperty("", value), namePathMapper);
     }
 
     @Override
     public Value createValue(boolean value) {
-        return newValue(BooleanPropertyState.booleanProperty("", value), namePathMapper);
+        return ValueImpl.newValue(BooleanPropertyState.booleanProperty("", value), namePathMapper);
     }
 
     @Override
@@ -209,13 +211,13 @@ public class ValueFactoryImpl implements ValueFactory {
                     "Node is not referenceable: " + value.getPath());
         }
         return weak
-            ? newValue(GenericPropertyState.weakreferenceProperty("", value.getUUID()), namePathMapper)
-            : newValue(GenericPropertyState.referenceProperty("", value.getUUID()), namePathMapper);
+            ? ValueImpl.newValue(GenericPropertyState.weakreferenceProperty("", value.getUUID()), namePathMapper)
+            : ValueImpl.newValue(GenericPropertyState.referenceProperty("", value.getUUID()), namePathMapper);
     }
 
     @Override
     public Value createValue(BigDecimal value) {
-        return newValue(DecimalPropertyState.decimalProperty("", value), namePathMapper);
+        return ValueImpl.newValue(DecimalPropertyState.decimalProperty("", value), namePathMapper);
     }
 
     @Override
@@ -229,7 +231,7 @@ public class ValueFactoryImpl implements ValueFactory {
                 case PropertyType.STRING:
                     return createValue(value);
                 case PropertyType.BINARY:
-                    return newValue(BinaryPropertyState.binaryProperty("", value), namePathMapper);
+                    return ValueImpl.newValue(BinaryPropertyState.binaryProperty("", value), namePathMapper);
                 case PropertyType.LONG:
                     return createValue(Conversions.convert(value).toLong());
                 case PropertyType.DOUBLE:
@@ -238,7 +240,7 @@ public class ValueFactoryImpl implements ValueFactory {
                     if (ISO8601.parse(value) == null) {
                         throw new ValueFormatException("Invalid date " + value);
                     }
-                    return newValue(GenericPropertyState.dateProperty("", value), namePathMapper);
+                    return ValueImpl.newValue(GenericPropertyState.dateProperty("", value), namePathMapper);
                 case PropertyType.BOOLEAN:
                     return createValue(Conversions.convert(value).toBoolean());
                 case PropertyType.NAME:
@@ -246,7 +248,7 @@ public class ValueFactoryImpl implements ValueFactory {
                     if (oakName == null || !JcrNameParser.validate(oakName)) {
                         throw new ValueFormatException("Invalid name: " + value);
                     }
-                    return newValue(GenericPropertyState.nameProperty("", oakName), namePathMapper);
+                    return ValueImpl.newValue(GenericPropertyState.nameProperty("", oakName), namePathMapper);
                 case PropertyType.PATH:
                     String oakValue = value;
                     if (value.startsWith("[") && value.endsWith("]")) {
@@ -257,20 +259,20 @@ public class ValueFactoryImpl implements ValueFactory {
                             throw new ValueFormatException("Invalid path: " + value);
                         }
                     }
-                    return newValue(GenericPropertyState.pathProperty("", oakValue), namePathMapper);
+                    return ValueImpl.newValue(GenericPropertyState.pathProperty("", oakValue), namePathMapper);
                 case PropertyType.REFERENCE:
                     if (!IdentifierManager.isValidUUID(value)) {
                         throw new ValueFormatException("Invalid reference value " + value);
                     }
-                    return newValue(GenericPropertyState.referenceProperty("", value), namePathMapper);
+                    return ValueImpl.newValue(GenericPropertyState.referenceProperty("", value), namePathMapper);
                 case PropertyType.WEAKREFERENCE:
                     if (!IdentifierManager.isValidUUID(value)) {
                         throw new ValueFormatException("Invalid weak reference value " + value);
                     }
-                    return newValue(GenericPropertyState.weakreferenceProperty("", value), namePathMapper);
+                    return ValueImpl.newValue(GenericPropertyState.weakreferenceProperty("", value), namePathMapper);
                 case PropertyType.URI:
                     new URI(value);
-                    return newValue(GenericPropertyState.uriProperty("", value), namePathMapper);
+                    return ValueImpl.newValue(GenericPropertyState.uriProperty("", value), namePathMapper);
                 case PropertyType.DECIMAL:
                     return createValue(Conversions.convert(value).toDecimal());
                 default:

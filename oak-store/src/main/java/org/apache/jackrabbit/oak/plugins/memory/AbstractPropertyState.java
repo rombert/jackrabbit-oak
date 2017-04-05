@@ -18,10 +18,16 @@
  */
 package org.apache.jackrabbit.oak.plugins.memory;
 
+import javax.jcr.RepositoryException;
+import javax.jcr.Value;
+
 import com.google.common.base.Objects;
 import com.google.common.collect.Iterables;
+import org.apache.jackrabbit.oak.api.Blob;
 import org.apache.jackrabbit.oak.api.PropertyState;
 import org.apache.jackrabbit.oak.api.Type;
+import org.apache.jackrabbit.oak.plugins.value.BinaryBasedBlob;
+import org.apache.jackrabbit.oak.plugins.value.OakValue;
 
 /**
  * Abstract base class for {@link org.apache.jackrabbit.oak.api.PropertyState} implementations. This
@@ -118,6 +124,17 @@ public abstract class AbstractPropertyState implements PropertyState {
             return property.size();
         } catch (Exception e) {
             return -1;
+        }
+    }
+
+    /**
+     * FIXME m12n: introduce to get rid of public static util methods on ValueImpl
+     */
+    static Blob getBlob(Value value) throws RepositoryException {
+        if (value instanceof OakValue) {
+            return ((OakValue) value).getBlob();
+        } else {
+            return new BinaryBasedBlob(value.getBinary());
         }
     }
 

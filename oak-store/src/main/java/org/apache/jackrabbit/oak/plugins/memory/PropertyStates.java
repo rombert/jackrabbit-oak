@@ -34,7 +34,7 @@ import org.apache.jackrabbit.oak.api.Blob;
 import org.apache.jackrabbit.oak.api.PropertyState;
 import org.apache.jackrabbit.oak.api.Type;
 import org.apache.jackrabbit.oak.plugins.value.Conversions;
-import org.apache.jackrabbit.oak.plugins.value.ValueImpl;
+import org.apache.jackrabbit.oak.plugins.value.OakValue;
 import org.apache.jackrabbit.util.ISO8601;
 
 /**
@@ -109,7 +109,7 @@ public final class PropertyStates {
             case PropertyType.BINARY:
                 List<Blob> blobs = Lists.newArrayList();
                 for (Value value : values) {
-                    blobs.add(ValueImpl.getBlob(value));
+                    blobs.add(AbstractPropertyState.getBlob(value));
                 }
                 return MultiBinaryPropertyState.binaryPropertyFromBlob(name, blobs);
             case PropertyType.LONG:
@@ -146,8 +146,8 @@ public final class PropertyStates {
     }
 
     private static String getString(Value value, int type) throws RepositoryException {
-        if (value instanceof ValueImpl) {
-            return ((ValueImpl) value).getOakString();
+        if (value instanceof OakValue) {
+            return ((OakValue) value).getOakString();
         }
         else if (type == PropertyType.NAME || type == PropertyType.PATH) {
             throw new IllegalArgumentException("Cannot create name of path property state from Value " +

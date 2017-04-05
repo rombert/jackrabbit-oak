@@ -32,16 +32,16 @@ import javax.jcr.Value;
  * Instances of this class represent a {@code Value} which couldn't be retrieved.
  * All its accessors throw a {@code RepositoryException}.
  */
-class ErrorValue implements Value {
+public class ErrorValue implements Value {
     private final Exception exception;
     private final int type;
 
-    ErrorValue(Exception exception, int type) {
+    public ErrorValue(Exception exception, int type) {
         this.exception = exception;
         this.type = type;
     }
 
-    ErrorValue(RepositoryException e) {
+    public ErrorValue(RepositoryException e) {
         this(e, PropertyType.UNDEFINED);
     }
 

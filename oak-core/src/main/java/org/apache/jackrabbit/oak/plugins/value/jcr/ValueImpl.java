@@ -14,7 +14,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.jackrabbit.oak.plugins.value;
+package org.apache.jackrabbit.oak.plugins.value.jcr;
 
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkNotNull;
@@ -38,18 +38,22 @@ import org.apache.jackrabbit.oak.api.IllegalRepositoryStateException;
 import org.apache.jackrabbit.oak.api.PropertyState;
 import org.apache.jackrabbit.oak.api.Type;
 import org.apache.jackrabbit.oak.namepath.NamePathMapper;
+import org.apache.jackrabbit.oak.plugins.value.BinaryBasedBlob;
+import org.apache.jackrabbit.oak.plugins.value.Conversions;
+import org.apache.jackrabbit.oak.plugins.value.ErrorValue;
+import org.apache.jackrabbit.oak.plugins.value.OakValue;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
  * Implementation of {@link Value} based on {@code PropertyState}.
  */
-public class ValueImpl implements JackrabbitValue {
+public class ValueImpl implements JackrabbitValue, OakValue {
     private static final Logger LOG = LoggerFactory.getLogger(ValueImpl.class);
 
     public static Blob getBlob(Value value) throws RepositoryException {
-        if (value instanceof ValueImpl) {
-            return ((ValueImpl) value).getBlob();
+        if (value instanceof OakValue) {
+            return ((OakValue) value).getBlob();
         } else {
             return new BinaryBasedBlob(value.getBinary());
         }
@@ -131,7 +135,9 @@ public class ValueImpl implements JackrabbitValue {
         }
     }
 
-    Blob getBlob() throws RepositoryException {
+    //-----------------------------------------------------------< OakValue >---
+
+    public Blob getBlob() throws RepositoryException {
         return getValue(Type.BINARY, index);
     }
 
