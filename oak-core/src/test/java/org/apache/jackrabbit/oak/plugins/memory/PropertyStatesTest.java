@@ -36,6 +36,9 @@ import org.junit.Test;
 import static java.util.Collections.singletonMap;
 import static org.junit.Assert.assertEquals;
 
+/**
+ * FIXME m12n: can't move to oak-store due to dependency on ValueFactoryImpl
+ */
 public class PropertyStatesTest {
 
     private final NamePathMapperImpl namePathMapper =
