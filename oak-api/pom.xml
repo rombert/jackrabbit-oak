@@ -12,6 +12,8 @@
   <artifactId>oak-api</artifactId>
   <packaging>bundle</packaging>
 
+  <name>Oak Api</name>
+
   <build>
     <plugins>
       <plugin>
@@ -87,5 +89,4 @@
       <scope>test</scope>
     </dependency>
   </dependencies>
-  <name>Oak Api</name>
 </project>
