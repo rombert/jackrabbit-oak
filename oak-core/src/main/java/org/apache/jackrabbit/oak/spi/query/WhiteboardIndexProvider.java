@@ -16,16 +16,14 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-package org.apache.jackrabbit.oak.spi.whiteboard;
+package org.apache.jackrabbit.oak.spi.query;
 
 import java.util.List;
 
 import javax.annotation.Nonnull;
 
-import org.apache.jackrabbit.oak.spi.query.CompositeQueryIndexProvider;
-import org.apache.jackrabbit.oak.spi.query.QueryIndex;
-import org.apache.jackrabbit.oak.spi.query.QueryIndexProvider;
 import org.apache.jackrabbit.oak.spi.state.NodeState;
+import org.apache.jackrabbit.oak.spi.whiteboard.AbstractServiceTracker;
 
 /**
  * Dynamic {@link QueryIndexProvider} based on the available

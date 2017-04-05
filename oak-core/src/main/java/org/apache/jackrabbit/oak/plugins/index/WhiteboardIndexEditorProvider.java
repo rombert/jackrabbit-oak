@@ -16,40 +16,38 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-package org.apache.jackrabbit.oak.spi.whiteboard;
+package org.apache.jackrabbit.oak.plugins.index;
 
-import javax.annotation.CheckForNull;
+import javax.annotation.Nonnull;
 
 import org.apache.jackrabbit.oak.api.CommitFailedException;
-import org.apache.jackrabbit.oak.spi.commit.CommitInfo;
-import org.apache.jackrabbit.oak.spi.commit.CompositeEditorProvider;
 import org.apache.jackrabbit.oak.spi.commit.Editor;
-import org.apache.jackrabbit.oak.spi.commit.EditorProvider;
 import org.apache.jackrabbit.oak.spi.state.NodeBuilder;
 import org.apache.jackrabbit.oak.spi.state.NodeState;
+import org.apache.jackrabbit.oak.spi.whiteboard.AbstractServiceTracker;
 
 /**
- * Dynamic {@link EditorProvider} based on the available
+ * Dynamic {@link IndexEditorProvider} based on the available
  * whiteboard services.
  */
-public class WhiteboardEditorProvider
-        extends AbstractServiceTracker<EditorProvider>
-        implements EditorProvider {
+public class WhiteboardIndexEditorProvider
+        extends AbstractServiceTracker<IndexEditorProvider>
+        implements IndexEditorProvider {
 
-    public WhiteboardEditorProvider() {
-        super(EditorProvider.class);
+    public WhiteboardIndexEditorProvider() {
+        super(IndexEditorProvider.class);
     }
 
-    //----------------------------------------------------< EditorProvider >--
-
     @Override
-    @CheckForNull
-    public Editor getRootEditor(
-            NodeState before, NodeState after, NodeBuilder builder,
-            CommitInfo info) throws CommitFailedException {
-        EditorProvider provider =
-                CompositeEditorProvider.compose(getServices());
-        return provider.getRootEditor(before, after, builder, info);
+    public Editor getIndexEditor(@Nonnull String type, @Nonnull NodeBuilder builder,
+            @Nonnull NodeState root, @Nonnull IndexUpdateCallback callback)
+            throws CommitFailedException {
+        IndexEditorProvider composite = CompositeIndexEditorProvider
+                .compose(getServices());
+        if (composite == null) {
+            return null;
+        }
+        return composite.getIndexEditor(type, builder, root, callback);
     }
 
 }
