@@ -43,6 +43,9 @@
         <include>org.apache.jackrabbit:oak-lucene</include>
         <include>org.apache.tika:tika-core</include>
         <include>org.apache.jackrabbit:oak-blob</include>
+        <include>org.apache.jackrabbit:oak-base</include>
+        <include>org.apache.jackrabbit:oak-store-spi</include>
+        <include>org.apache.jackrabbit:oak-blob-plugins</include>
       </includes>
     </dependencySet>
   </dependencySets>
