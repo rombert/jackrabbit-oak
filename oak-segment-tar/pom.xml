@@ -119,7 +119,7 @@
         </dependency>
         <dependency>
             <groupId>org.apache.jackrabbit</groupId>
-            <artifactId>oak-store</artifactId>
+            <artifactId>oak-store-spi</artifactId>
             <version>${project.version}</version>
             <scope>provided</scope>
         </dependency>

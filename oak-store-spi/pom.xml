@@ -9,7 +9,7 @@
   </parent>
   <modelVersion>4.0.0</modelVersion>
 
-  <artifactId>oak-store</artifactId>
+  <artifactId>oak-store-spi</artifactId>
 
   <dependencies>
     <!-- Optional OSGi dependencies, used only when running within OSGi -->
