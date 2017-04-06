@@ -45,6 +45,11 @@
       <artifactId>oak-commons</artifactId>
       <version>${project.version}</version>
     </dependency>
+    <dependency>
+      <groupId>org.apache.jackrabbit</groupId>
+      <artifactId>oak-base</artifactId>
+      <version>${project.version}</version>
+    </dependency>
 
     <!-- Dependencies to JCR and Jackrabbit -->
     <dependency>
