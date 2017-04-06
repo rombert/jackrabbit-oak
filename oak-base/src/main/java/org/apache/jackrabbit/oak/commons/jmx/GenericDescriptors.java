@@ -17,7 +17,7 @@
  * under the License.
  */
 
-package org.apache.jackrabbit.oak.util;
+package org.apache.jackrabbit.oak.commons.jmx;
 
 import java.util.Collections;
 import java.util.HashSet;

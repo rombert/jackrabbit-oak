@@ -134,16 +134,8 @@
             <version>${project.version}</version>
             <scope>provided</scope>
         </dependency>
-        <!-- FIXME m12n: drop dependency to core (utility only) -->
-        <dependency>
-            <groupId>org.apache.jackrabbit</groupId>
-            <artifactId>oak-core</artifactId>
-            <version>${project.version}</version>
-            <scope>provided</scope>
-        </dependency>
 
         <!-- Dependencies on Jackrabbit modules -->
-
         <dependency>
             <groupId>javax.jcr</groupId>
             <artifactId>jcr</artifactId>
@@ -324,12 +316,12 @@
             <scope>test</scope>
         </dependency>
         <!-- FIXME m12n: test dependency of oak-core due to usage of InitialContent for test setup -->
-        <!--<dependency>-->
-            <!--<groupId>org.apache.jackrabbit</groupId>-->
-            <!--<artifactId>oak-core</artifactId>-->
-            <!--<version>${project.version}</version>-->
-            <!--<scope>test</scope>-->
-        <!--</dependency>-->
+        <dependency>
+            <groupId>org.apache.jackrabbit</groupId>
+            <artifactId>oak-core</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
 
     </dependencies>
 </project>
