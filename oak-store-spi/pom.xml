@@ -26,7 +26,11 @@
             <instructions>
               <Export-Package>
                 org.apache.jackrabbit.oak.jcr,
-                org.apache.jackrabbit.oak.jcr.observation.filter
+                org.apache.jackrabbit.oak.jcr.observation.filter,
+                org.apache.jackrabbit.oak.json,
+                org.apache.jackrabbit.oak.spi.cluster,
+                org.apache.jackrabbit.oak.spi.commit,
+                org.apache.jackrabbit.oak.spi.state
               </Export-Package>
             </instructions>
           </configuration>
