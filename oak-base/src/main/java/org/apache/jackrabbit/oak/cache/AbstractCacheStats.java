@@ -154,7 +154,7 @@ public abstract class AbstractCacheStats extends AnnotatedStandardMBean implemen
                 .toString();
     }
 
-    static String timeInWords(long nanos) {
+    public static String timeInWords(long nanos) {
         long millis = TimeUnit.NANOSECONDS.toMillis(nanos);
         return String.format("%d min, %d sec",
                 TimeUnit.MILLISECONDS.toMinutes(millis),

@@ -17,7 +17,7 @@
  * under the License.
  */
 
-package org.apache.jackrabbit.oak.cache;
+package org.apache.jackrabbit.oak.cache.impl;
 
 import java.math.BigDecimal;
 import java.math.MathContext;
