@@ -40,7 +40,7 @@ import org.apache.jackrabbit.core.data.DataStoreException;
 import org.apache.jackrabbit.core.data.FileDataStore;
 import org.apache.jackrabbit.oak.commons.PropertiesUtil;
 import org.apache.jackrabbit.oak.plugins.blob.datastore.DataStoreBlobStore;
-import org.apache.jackrabbit.oak.plugins.blob.datastore.DataStoreTextWriter;
+import org.apache.jackrabbit.oak.plugins.blob.index.DataStoreTextWriter;
 import org.apache.jackrabbit.oak.plugins.document.DocumentMK;
 import org.apache.jackrabbit.oak.plugins.document.DocumentNodeStore;
 import org.apache.jackrabbit.oak.plugins.document.util.MongoConnection;
@@ -60,6 +60,9 @@ import joptsimple.OptionSpec;
 
 public class TextExtractorMain {
     private static final Logger log = LoggerFactory.getLogger(TextExtractorMain.class);
+
+    private TextExtractorMain() {
+    }
 
     public static void main(String[] args) throws Exception {
         Closer closer = Closer.create();

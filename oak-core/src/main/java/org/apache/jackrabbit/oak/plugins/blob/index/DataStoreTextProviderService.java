@@ -17,7 +17,7 @@
  * under the License.
  */
 
-package org.apache.jackrabbit.oak.plugins.blob.datastore;
+package org.apache.jackrabbit.oak.plugins.blob.index;
 
 import java.io.File;
 import java.io.IOException;
@@ -38,6 +38,7 @@ import static com.google.common.base.Preconditions.checkNotNull;
 
 @Component(
         policy = ConfigurationPolicy.REQUIRE,
+        name = "org.apache.jackrabbit.oak.plugins.blob.datastore.DataStoreTextProviderService",
         metatype = true,
         label = "Apache Jackrabbit Oak DataStore PreExtractedTextProvider",
         description = "Configures a PreExtractedTextProvider based on extracted text stored on FileSystem"

@@ -17,7 +17,7 @@
  * under the License.
  */
 
-package org.apache.jackrabbit.oak.plugins.blob.datastore;
+package org.apache.jackrabbit.oak.plugins.blob.index;
 
 import java.io.ByteArrayInputStream;
 import java.io.File;
@@ -25,8 +25,9 @@ import java.io.File;
 import org.apache.commons.io.IOUtils;
 import org.apache.jackrabbit.core.data.DataRecord;
 import org.apache.jackrabbit.core.data.FileDataStore;
-import org.apache.jackrabbit.oak.plugins.blob.datastore.DataStoreTextWriter;
+import org.apache.jackrabbit.oak.plugins.blob.datastore.DataStoreUtils;
 import org.apache.jackrabbit.oak.plugins.blob.datastore.TextWriter;
+import org.apache.jackrabbit.oak.plugins.blob.index.DataStoreTextWriter;
 import org.apache.jackrabbit.oak.plugins.index.fulltext.ExtractedText;
 import org.apache.jackrabbit.oak.plugins.index.fulltext.ExtractedText.ExtractionResult;
 import org.apache.jackrabbit.oak.plugins.memory.ArrayBasedBlob;

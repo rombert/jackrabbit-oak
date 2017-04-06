@@ -109,6 +109,7 @@
             <artifactId>oak-store-spi</artifactId>
             <version>${project.version}</version>
         </dependency>
+        <!-- FIXME m12n: drop dependency to oak-core once plugins.blob.* has been moved out of core -->
         <dependency>
             <groupId>org.apache.jackrabbit</groupId>
             <artifactId>oak-core</artifactId>

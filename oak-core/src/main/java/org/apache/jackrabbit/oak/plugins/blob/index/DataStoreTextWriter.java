@@ -17,7 +17,7 @@
  * under the License.
  */
 
-package org.apache.jackrabbit.oak.plugins.blob.datastore;
+package org.apache.jackrabbit.oak.plugins.blob.index;
 
 import java.io.BufferedWriter;
 import java.io.Closeable;
@@ -34,6 +34,8 @@ import com.google.common.collect.Sets;
 import com.google.common.io.Files;
 import org.apache.commons.io.FileUtils;
 import org.apache.jackrabbit.oak.api.Blob;
+import org.apache.jackrabbit.oak.plugins.blob.datastore.DataStoreBlobStore;
+import org.apache.jackrabbit.oak.plugins.blob.datastore.TextWriter;
 import org.apache.jackrabbit.oak.plugins.index.fulltext.ExtractedText;
 import org.apache.jackrabbit.oak.plugins.index.fulltext.ExtractedText.ExtractionResult;
 import org.apache.jackrabbit.oak.plugins.index.fulltext.PreExtractedTextProvider;
@@ -189,7 +191,7 @@ public class DataStoreTextWriter implements TextWriter, Closeable, PreExtractedT
 
     private String stripLength(String blobId) {
         if (dataStoreBlobId) {
-            return DataStoreBlobStore.BlobId.of(blobId).blobId;
+            return DataStoreBlobStore.BlobId.of(blobId).getBlobId();
         }
         return blobId;
     }
