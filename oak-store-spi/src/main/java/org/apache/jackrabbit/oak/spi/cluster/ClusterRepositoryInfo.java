@@ -14,7 +14,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.jackrabbit.oak.plugins.identifier;
+package org.apache.jackrabbit.oak.spi.cluster;
 
 import static com.google.common.base.Preconditions.checkNotNull;
 
@@ -41,6 +41,9 @@ public class ClusterRepositoryInfo {
     public static final String OAK_CLUSTERID_REPOSITORY_DESCRIPTOR_KEY = "oak.clusterid";
     public static final String CLUSTER_CONFIG_NODE = ":clusterConfig";
     public static final String CLUSTER_ID_PROP = ":clusterId";
+
+    private ClusterRepositoryInfo() {
+    }
 
     /**
      * Gets the {# CLUSTER_ID_PROP} if available, if it doesn't it 
