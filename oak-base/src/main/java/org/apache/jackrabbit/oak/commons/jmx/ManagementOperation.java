@@ -17,7 +17,7 @@
  * under the License.
  */
 
-package org.apache.jackrabbit.oak.management;
+package org.apache.jackrabbit.oak.commons.jmx;
 
 import static com.google.common.base.Objects.toStringHelper;
 import static com.google.common.base.Preconditions.checkNotNull;
@@ -38,10 +38,10 @@ import static org.apache.jackrabbit.oak.api.jmx.RepositoryManagementMBean.Status
 import static org.apache.jackrabbit.oak.api.jmx.RepositoryManagementMBean.StatusCode.RUNNING;
 import static org.apache.jackrabbit.oak.api.jmx.RepositoryManagementMBean.StatusCode.SUCCEEDED;
 import static org.apache.jackrabbit.oak.api.jmx.RepositoryManagementMBean.StatusCode.UNAVAILABLE;
-import static org.apache.jackrabbit.oak.management.ManagementOperation.Status.failed;
-import static org.apache.jackrabbit.oak.management.ManagementOperation.Status.none;
-import static org.apache.jackrabbit.oak.management.ManagementOperation.Status.running;
-import static org.apache.jackrabbit.oak.management.ManagementOperation.Status.succeeded;
+import static org.apache.jackrabbit.oak.commons.jmx.ManagementOperation.Status.failed;
+import static org.apache.jackrabbit.oak.commons.jmx.ManagementOperation.Status.none;
+import static org.apache.jackrabbit.oak.commons.jmx.ManagementOperation.Status.running;
+import static org.apache.jackrabbit.oak.commons.jmx.ManagementOperation.Status.succeeded;
 
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;

@@ -22,9 +22,9 @@ package org.apache.jackrabbit.oak.plugins.blob;
 import static com.google.common.base.Preconditions.checkNotNull;
 import static java.lang.System.nanoTime;
 import static org.apache.jackrabbit.oak.commons.IOUtils.humanReadableByteCount;
-import static org.apache.jackrabbit.oak.management.ManagementOperation.Status.formatTime;
-import static org.apache.jackrabbit.oak.management.ManagementOperation.done;
-import static org.apache.jackrabbit.oak.management.ManagementOperation.newManagementOperation;
+import static org.apache.jackrabbit.oak.commons.jmx.ManagementOperation.Status.formatTime;
+import static org.apache.jackrabbit.oak.commons.jmx.ManagementOperation.done;
+import static org.apache.jackrabbit.oak.commons.jmx.ManagementOperation.newManagementOperation;
 
 import java.util.Date;
 import java.util.List;
@@ -43,7 +43,7 @@ import javax.management.openmbean.TabularDataSupport;
 import javax.management.openmbean.TabularType;
 
 import org.apache.jackrabbit.oak.commons.jmx.AnnotatedStandardMBean;
-import org.apache.jackrabbit.oak.management.ManagementOperation;
+import org.apache.jackrabbit.oak.commons.jmx.ManagementOperation;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
