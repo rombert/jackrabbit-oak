@@ -64,6 +64,7 @@
     <module>oak-benchmarks</module>
     <module>oak-store-spi</module>
     <module>oak-base</module>
+    <module>oak-blob-plugins</module>
   </modules>
 
   <scm>

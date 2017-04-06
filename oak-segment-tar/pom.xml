@@ -124,11 +124,17 @@
         </dependency>
         <dependency>
             <groupId>org.apache.jackrabbit</groupId>
+            <artifactId>oak-blob-plugins</artifactId>
+            <version>${project.version}</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.jackrabbit</groupId>
             <artifactId>oak-store-spi</artifactId>
             <version>${project.version}</version>
             <scope>provided</scope>
         </dependency>
-        <!-- TODO: drop as we have dependency to oak-store; FIXME: RevisionGC -->
+        <!-- FIXME m12n: drop dependency to core (utility only) -->
         <dependency>
             <groupId>org.apache.jackrabbit</groupId>
             <artifactId>oak-core</artifactId>
@@ -318,12 +324,12 @@
             <scope>test</scope>
         </dependency>
         <!-- FIXME m12n: test dependency of oak-core due to usage of InitialContent for test setup -->
-        <!-- dependency>
-            <groupId>org.apache.jackrabbit</groupId>
-            <artifactId>oak-core</artifactId>
-            <version>${project.version}</version>
-            <scope>test</scope>
-        </dependency-->
+        <!--<dependency>-->
+            <!--<groupId>org.apache.jackrabbit</groupId>-->
+            <!--<artifactId>oak-core</artifactId>-->
+            <!--<version>${project.version}</version>-->
+            <!--<scope>test</scope>-->
+        <!--</dependency>-->
 
     </dependencies>
 </project>
