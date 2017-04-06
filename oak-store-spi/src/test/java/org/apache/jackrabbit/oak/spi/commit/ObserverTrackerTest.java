@@ -17,7 +17,7 @@
  * under the License.
  */
 
-package org.apache.jackrabbit.oak.osgi;
+package org.apache.jackrabbit.oak.spi.commit;
 
 import static com.google.common.collect.Sets.newHashSet;
 import static org.junit.Assert.assertEquals;
@@ -32,9 +32,12 @@ import java.util.Set;
 import com.google.common.collect.ImmutableSet;
 import org.apache.jackrabbit.oak.spi.commit.Observable;
 import org.apache.jackrabbit.oak.spi.commit.Observer;
+import org.apache.jackrabbit.oak.spi.commit.ObserverTracker;
 import org.junit.After;
+import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
+import org.mockito.Mockito;
 import org.osgi.framework.BundleContext;
 import org.osgi.framework.ServiceReference;
 
@@ -49,7 +52,7 @@ public class ObserverTrackerTest {
                 @Override
                 public void close() {
                     if (!observers.remove(observer)) {
-                        fail("Already closed");
+                        Assert.fail("Already closed");
                     }
                 }
             };
@@ -58,16 +61,16 @@ public class ObserverTrackerTest {
 
     private final ObserverTracker tracker = new ObserverTracker(observable);
 
-    private final ServiceReference ref1 = mock(ServiceReference.class);
-    private final Observer observer1 = mock(Observer.class);
-    private final ServiceReference ref2 = mock(ServiceReference.class);
-    private final Observer observer2 = mock(Observer.class);
+    private final ServiceReference ref1 = Mockito.mock(ServiceReference.class);
+    private final Observer observer1 = Mockito.mock(Observer.class);
+    private final ServiceReference ref2 = Mockito.mock(ServiceReference.class);
+    private final Observer observer2 = Mockito.mock(Observer.class);
 
     @Before
     public void setup() {
-        BundleContext bundleContext = mock(BundleContext.class);
-        when(bundleContext.getService(ref1)).thenReturn(observer1);
-        when(bundleContext.getService(ref2)).thenReturn(observer2);
+        BundleContext bundleContext = Mockito.mock(BundleContext.class);
+        Mockito.when(bundleContext.getService(ref1)).thenReturn(observer1);
+        Mockito.when(bundleContext.getService(ref2)).thenReturn(observer2);
         tracker.start(bundleContext);
     }
 
@@ -79,45 +82,45 @@ public class ObserverTrackerTest {
     @Test
     public void registerUnregister() {
         tracker.addingService(ref1);
-        assertEquals(ImmutableSet.of(observer1), observers);
+        Assert.assertEquals(ImmutableSet.of(observer1), observers);
 
         tracker.addingService(ref2);
-        assertEquals(ImmutableSet.of(observer1, observer2), observers);
+        Assert.assertEquals(ImmutableSet.of(observer1, observer2), observers);
 
         tracker.removedService(ref1, null);
-        assertEquals(ImmutableSet.of(observer2), observers);
+        Assert.assertEquals(ImmutableSet.of(observer2), observers);
 
         tracker.removedService(ref2, null);
-        assertTrue(observers.isEmpty());
+        Assert.assertTrue(observers.isEmpty());
     }
 
     @Test
     public void registerTwice() {
         tracker.addingService(ref1);
-        assertEquals(ImmutableSet.of(observer1), observers);
+        Assert.assertEquals(ImmutableSet.of(observer1), observers);
 
         // Adding an already added service should have no effect
         tracker.addingService(ref1);
-        assertEquals(ImmutableSet.of(observer1), observers);
+        Assert.assertEquals(ImmutableSet.of(observer1), observers);
     }
 
     @Test
     public void unregisterWhenEmpty() {
         tracker.removedService(ref1, null);
-        assertTrue(observers.isEmpty());
+        Assert.assertTrue(observers.isEmpty());
     }
 
     @Test
     public void unregisterTwice() {
         tracker.addingService(ref1);
-        assertEquals(ImmutableSet.of(observer1), observers);
+        Assert.assertEquals(ImmutableSet.of(observer1), observers);
 
         tracker.removedService(ref1, null);
-        assertTrue(observers.isEmpty());
+        Assert.assertTrue(observers.isEmpty());
 
         // Removing a removed service should have no effect
         tracker.removedService(ref1, null);
-        assertTrue(observers.isEmpty());
+        Assert.assertTrue(observers.isEmpty());
     }
 
 }

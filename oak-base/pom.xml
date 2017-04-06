@@ -35,6 +35,19 @@
   </build>
 
   <dependencies>
+    <!-- Optional OSGi dependencies, used only when running within OSGi -->
+    <dependency>
+      <groupId>org.osgi</groupId>
+      <artifactId>org.osgi.core</artifactId>
+      <scope>provided</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.osgi</groupId>
+      <artifactId>org.osgi.compendium</artifactId>
+      <scope>provided</scope>
+    </dependency>
+
+    <!-- Other Oak module -->
     <dependency>
       <groupId>org.apache.jackrabbit</groupId>
       <artifactId>oak-api</artifactId>
@@ -45,6 +58,7 @@
       <artifactId>oak-commons</artifactId>
       <version>${project.version}</version>
     </dependency>
+
     <!-- logging -->
     <dependency>
       <groupId>org.slf4j</groupId>
@@ -99,6 +113,19 @@
       <artifactId>commons-lang3</artifactId>
       <version>3.3.2</version>
       <optional>true</optional>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.mockito</groupId>
+      <artifactId>mockito-core</artifactId>
+      <version>1.10.19</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.jackrabbit</groupId>
+      <artifactId>oak-commons</artifactId>
+      <version>${project.version}</version>
+      <classifier>tests</classifier>
       <scope>test</scope>
     </dependency>
   </dependencies>
