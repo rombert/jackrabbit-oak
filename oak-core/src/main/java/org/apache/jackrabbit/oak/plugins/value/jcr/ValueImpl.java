@@ -51,14 +51,6 @@ import org.slf4j.LoggerFactory;
 public class ValueImpl implements JackrabbitValue, OakValue {
     private static final Logger LOG = LoggerFactory.getLogger(ValueImpl.class);
 
-    public static Blob getBlob(Value value) throws RepositoryException {
-        if (value instanceof OakValue) {
-            return ((OakValue) value).getBlob();
-        } else {
-            return new BinaryBasedBlob(value.getBinary());
-        }
-    }
-
     private final PropertyState propertyState;
     private final Type<?> type;
     private final int index;

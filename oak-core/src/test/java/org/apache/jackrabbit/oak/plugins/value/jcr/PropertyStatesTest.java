@@ -17,7 +17,7 @@
  * under the License.
  */
 
-package org.apache.jackrabbit.oak.plugins.memory;
+package org.apache.jackrabbit.oak.plugins.value.jcr;
 
 import java.util.Calendar;
 
@@ -29,6 +29,7 @@ import org.apache.jackrabbit.oak.api.PropertyState;
 import org.apache.jackrabbit.oak.api.Type;
 import org.apache.jackrabbit.oak.namepath.LocalNameMapper;
 import org.apache.jackrabbit.oak.namepath.NamePathMapperImpl;
+import org.apache.jackrabbit.oak.plugins.memory.PropertyStates;
 import org.apache.jackrabbit.oak.plugins.value.jcr.ValueFactoryImpl;
 import org.apache.jackrabbit.util.ISO8601;
 import org.junit.Test;
@@ -37,7 +38,8 @@ import static java.util.Collections.singletonMap;
 import static org.junit.Assert.assertEquals;
 
 /**
- * FIXME m12n: can't move to oak-store due to dependency on ValueFactoryImpl
+ * JCR specific tests related to {@link PropertyStates}: creation name/path states
+ * with remapped namespace as well as creation from date value.
  */
 public class PropertyStatesTest {
 

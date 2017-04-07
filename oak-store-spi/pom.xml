@@ -25,12 +25,13 @@
           <configuration>
             <instructions>
               <Export-Package>
-                org.apache.jackrabbit.oak.jcr,
-                org.apache.jackrabbit.oak.jcr.observation.filter,
                 org.apache.jackrabbit.oak.json,
                 org.apache.jackrabbit.oak.spi.cluster,
                 org.apache.jackrabbit.oak.spi.commit,
-                org.apache.jackrabbit.oak.spi.state
+                org.apache.jackrabbit.oak.spi.lifecycle,
+                org.apache.jackrabbit.oak.spi.state,
+                org.apache.jackrabbit.oak.plugins.memory,
+                org.apache.jackrabbit.oak.plugins.value
               </Export-Package>
             </instructions>
           </configuration>

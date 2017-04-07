@@ -95,6 +95,11 @@
         <!-- Dependencies to other Oak components -->
         <dependency>
             <groupId>org.apache.jackrabbit</groupId>
+            <artifactId>oak-api</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.jackrabbit</groupId>
             <artifactId>oak-commons</artifactId>
             <version>${project.version}</version>
         </dependency>
@@ -118,12 +123,6 @@
             <artifactId>oak-store-spi</artifactId>
             <version>${project.version}</version>
         </dependency>
-        <!-- FIXME m12n: drop dependency to oak-core once plugins.blob.* has been moved out of core -->
-        <dependency>
-            <groupId>org.apache.jackrabbit</groupId>
-            <artifactId>oak-core</artifactId>
-            <version>${project.version}</version>
-        </dependency>
         <!-- Amazon AWS dependency -->
         <dependency>
             <groupId>com.amazonaws</groupId>
@@ -145,13 +144,6 @@
             <groupId>org.apache.jackrabbit</groupId>
             <artifactId>jackrabbit-data</artifactId>
             <version>${jackrabbit.version}</version>
-            <classifier>tests</classifier>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.apache.jackrabbit</groupId>
-            <artifactId>oak-core</artifactId>
-            <version>${project.version}</version>
             <classifier>tests</classifier>
             <scope>test</scope>
         </dependency>
