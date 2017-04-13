@@ -127,9 +127,6 @@ public abstract class AbstractPropertyState implements PropertyState {
         }
     }
 
-    /**
-     * FIXME m12n: introduce to get rid of public static util methods on ValueImpl
-     */
     static Blob getBlob(Value value) throws RepositoryException {
         if (value instanceof OakValue) {
             return ((OakValue) value).getBlob();

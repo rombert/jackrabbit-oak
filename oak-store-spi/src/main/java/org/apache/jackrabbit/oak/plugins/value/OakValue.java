@@ -24,7 +24,7 @@ import javax.jcr.RepositoryException;
 import org.apache.jackrabbit.oak.api.Blob;
 
 /**
- * FIXME m12n: introduced to break dependency to ValueImpl, which still resides in plugins.value
+ * TODO: document
  */
 public interface OakValue {
 
