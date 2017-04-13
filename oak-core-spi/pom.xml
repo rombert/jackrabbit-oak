@@ -9,8 +9,8 @@
   </parent>
   <modelVersion>4.0.0</modelVersion>
 
-  <artifactId>oak-base</artifactId>
-  <name>Oak Base</name>
+  <artifactId>oak-core-spi</artifactId>
+  <name>Oak Core SPI</name>
   <packaging>bundle</packaging>
 
   <build>

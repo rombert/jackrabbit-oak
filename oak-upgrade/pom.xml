@@ -73,7 +73,7 @@
     </dependency>
     <dependency>
       <groupId>org.apache.jackrabbit</groupId>
-      <artifactId>oak-base</artifactId>
+      <artifactId>oak-core-spi</artifactId>
       <version>${project.version}</version>
     </dependency>
     <dependency>
