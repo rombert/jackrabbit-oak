@@ -22,9 +22,9 @@ import com.google.common.collect.ImmutableMap;
 import org.apache.jackrabbit.oak.api.Root;
 import org.apache.jackrabbit.oak.api.Tree;
 import org.apache.jackrabbit.oak.api.Type;
+import org.apache.jackrabbit.oak.plugins.tree.NodeUtil;
 import org.apache.jackrabbit.oak.spi.security.ConfigurationParameters;
 import org.apache.jackrabbit.oak.spi.security.authentication.external.impl.ExternalIdentityConstants;
-import org.apache.jackrabbit.oak.util.NodeUtil;
 import org.junit.Test;
 
 public class ValidatorNoProtectionTest extends ExternalIdentityValidatorTest {

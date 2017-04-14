@@ -14,7 +14,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.jackrabbit.oak.util;
+package org.apache.jackrabbit.oak.plugins.tree;
 
 import java.util.Map;
 import javax.annotation.Nonnull;
@@ -22,6 +22,7 @@ import javax.annotation.Nonnull;
 import com.google.common.collect.ImmutableMap;
 import org.apache.jackrabbit.oak.AbstractSecurityTest;
 import org.apache.jackrabbit.oak.plugins.nodetype.NodeTypeConstants;
+import org.apache.jackrabbit.oak.plugins.tree.NodeUtil;
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;

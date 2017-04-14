@@ -19,9 +19,9 @@ package org.apache.jackrabbit.oak.spi.security.authentication.external.impl.prin
 import com.google.common.collect.Iterables;
 import org.apache.jackrabbit.oak.api.Tree;
 import org.apache.jackrabbit.oak.plugins.index.IndexConstants;
+import org.apache.jackrabbit.oak.plugins.tree.TreeUtil;
 import org.apache.jackrabbit.oak.spi.security.authentication.external.AbstractExternalAuthTest;
 import org.apache.jackrabbit.oak.spi.security.authentication.external.impl.ExternalIdentityConstants;
-import org.apache.jackrabbit.oak.util.TreeUtil;
 import org.junit.Test;
 
 import static org.junit.Assert.assertArrayEquals;

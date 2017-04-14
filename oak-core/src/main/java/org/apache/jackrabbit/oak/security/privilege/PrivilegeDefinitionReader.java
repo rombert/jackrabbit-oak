@@ -24,10 +24,10 @@ import javax.annotation.Nonnull;
 
 import org.apache.jackrabbit.oak.api.Root;
 import org.apache.jackrabbit.oak.api.Tree;
+import org.apache.jackrabbit.oak.plugins.tree.TreeUtil;
 import org.apache.jackrabbit.oak.spi.security.privilege.PrivilegeConstants;
 import org.apache.jackrabbit.oak.spi.security.privilege.PrivilegeDefinition;
 import org.apache.jackrabbit.oak.spi.security.privilege.PrivilegeUtil;
-import org.apache.jackrabbit.oak.util.TreeUtil;
 
 /**
  * Reads privilege definitions from the repository content without applying

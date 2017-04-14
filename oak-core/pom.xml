@@ -89,7 +89,6 @@
               org.apache.jackrabbit.oak.query.fulltext,
               org.apache.jackrabbit.oak.query.facet,
               org.apache.jackrabbit.oak.security,
-              org.apache.jackrabbit.oak.util,
             </Export-Package>
             <Jaas-ModuleClass>
               org.apache.jackrabbit.oak.spi.security.authentication.GuestLoginModule,
