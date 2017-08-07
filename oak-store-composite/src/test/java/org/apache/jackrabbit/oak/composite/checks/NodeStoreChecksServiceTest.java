@@ -17,6 +17,7 @@
 package org.apache.jackrabbit.oak.composite.checks;
 
 import static com.google.common.base.Preconditions.checkNotNull;
+import static org.apache.jackrabbit.oak.spi.mount.Mounts.defaultMountInfoProvider;
 
 import java.util.Arrays;
 
@@ -70,7 +71,7 @@ public class NodeStoreChecksServiceTest {
     @Test(expected = IllegalRepositoryStateException.class)
     public void failOnNodeCoveredByMount() {
 
-        NodeStoreChecksService checks = new NodeStoreChecksService(Arrays.asList(new FailOnTreeNameChecker("third")));
+        NodeStoreChecksService checks = new NodeStoreChecksService(defaultMountInfoProvider(), Arrays.asList(new FailOnTreeNameChecker("third")));
         
         checks.check(globalStore, new MountedNodeStore(mount, mountedStore));
     }
@@ -78,7 +79,7 @@ public class NodeStoreChecksServiceTest {
     @Test
     public void doNotFailOnNodeNotCoveredByMount() {
         
-        NodeStoreChecksService checks = new NodeStoreChecksService(Arrays.asList(new FailOnTreeNameChecker("not-covered")));
+        NodeStoreChecksService checks = new NodeStoreChecksService(defaultMountInfoProvider(), Arrays.asList(new FailOnTreeNameChecker("not-covered")));
         
         checks.check(globalStore, new MountedNodeStore(mount, mountedStore));
     }
@@ -92,7 +93,7 @@ public class NodeStoreChecksServiceTest {
         }
 
         @Override
-        public Void createContext(NodeStore globalStore) {
+        public Void createContext(NodeStore globalStore, MountInfoProvider mip) {
             return null;
         }
 
