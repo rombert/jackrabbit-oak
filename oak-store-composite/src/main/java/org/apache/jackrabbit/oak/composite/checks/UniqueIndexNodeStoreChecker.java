@@ -1,6 +1,5 @@
 package org.apache.jackrabbit.oak.composite.checks;
 
-import static org.apache.jackrabbit.oak.plugins.index.IndexConstants.INDEX_CONTENT_NODE_NAME;
 import static org.apache.jackrabbit.oak.plugins.index.IndexConstants.INDEX_DEFINITIONS_NAME;
 import static org.apache.jackrabbit.oak.plugins.index.IndexConstants.UNIQUE_PROPERTY_NAME;
 
@@ -14,7 +13,6 @@ import java.util.Set;
 
 import org.apache.jackrabbit.oak.api.Tree;
 import org.apache.jackrabbit.oak.composite.MountedNodeStore;
-import org.apache.jackrabbit.oak.composite.checks.UniqueIndexNodeStoreChecker.Context;
 import org.apache.jackrabbit.oak.plugins.index.property.Multiplexers;
 import org.apache.jackrabbit.oak.plugins.index.property.strategy.IndexStoreStrategy;
 import org.apache.jackrabbit.oak.spi.mount.Mount;
@@ -66,7 +64,7 @@ public class UniqueIndexNodeStoreChecker implements MountedNodeStoreChecker<Uniq
                 
                 NodeState mountIndexDef = indexDef.getNodeState().getChildNode(mountIndexDefName);
                 if ( mountIndexDef.exists() ) {
-                    context.add(indexDef.getName(), 
+                    context.add(indexDef, 
                            mountedStore.getMount(), indexDef.getNodeState());
                     
                 }
