@@ -36,6 +36,6 @@ public interface MountedNodeStoreChecker<T> {
     
     public T createContext(NodeStore globalStore, MountInfoProvider mip);
     
-    void check(MountedNodeStore mountedStore, Tree tree, ErrorHolder errorHolder, T context);
+    boolean check(MountedNodeStore mountedStore, Tree tree, ErrorHolder errorHolder, T context);
 
 }

@@ -98,9 +98,11 @@ public class NodeStoreChecksServiceTest {
         }
 
         @Override
-        public void check(MountedNodeStore mountedStore, Tree tree, ErrorHolder errorHolder, Void context) {
+        public boolean check(MountedNodeStore mountedStore, Tree tree, ErrorHolder errorHolder, Void context) {
             if ( name.equals(tree.getName()))
                 errorHolder.report(mountedStore, tree.getPath(), "test failure");
+            
+            return true;
         }
         
     }

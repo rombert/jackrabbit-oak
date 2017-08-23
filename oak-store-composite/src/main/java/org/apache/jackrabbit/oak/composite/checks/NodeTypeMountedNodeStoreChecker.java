@@ -88,12 +88,14 @@ public class NodeTypeMountedNodeStoreChecker implements
     }
 
     @Override
-    public void check(MountedNodeStore mountedStore, Tree tree, ErrorHolder errorHolder, Context context) {
+    public boolean check(MountedNodeStore mountedStore, Tree tree, ErrorHolder errorHolder, Context context) {
         
         if ( context.getTypeManager().isNodeType(tree, invalidNodeType) &&
                 !isExcluded(mountedStore, tree, context) ) {
             errorHolder.report(mountedStore, tree.getPath(), errorLabel);
         }
+        
+        return true;
     }
 
     private boolean isExcluded(MountedNodeStore mountedStore, Tree tree, Context context) {

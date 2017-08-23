@@ -94,11 +94,12 @@ public class NodeStoreChecksService implements NodeStoreChecks {
         boolean mounted = mount.isMounted(tree.getPath());
         
         
+        boolean keepGoing = true;
         if ( mounted ) {
-            c.check(mountedStore, tree, errorHolder, context);
+            keepGoing = c.check(mountedStore, tree, errorHolder, context);
         }
 
-        if ( mounted || under ) {
+        if ( ( mounted || under ) && keepGoing ) {
             tree.getChildren().forEach( child -> visit(child, mountedStore, errorHolder, context, c));
         }
     }    
