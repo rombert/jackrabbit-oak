@@ -16,25 +16,17 @@
  */
 package org.apache.jackrabbit.oak.composite.checks;
 
-import static org.apache.jackrabbit.oak.InitialContent.INITIAL_CONTENT;
 import static org.apache.jackrabbit.oak.plugins.index.IndexConstants.INDEX_DEFINITIONS_NAME;
 import static org.apache.jackrabbit.oak.plugins.index.IndexUtils.createIndexDefinition;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.UUID;
+import java.util.function.Consumer;
 
-import org.apache.jackrabbit.JcrConstants;
-import org.apache.jackrabbit.oak.InitialContent;
-import org.apache.jackrabbit.oak.OakInitializer;
 import org.apache.jackrabbit.oak.api.CommitFailedException;
 import org.apache.jackrabbit.oak.api.IllegalRepositoryStateException;
 import org.apache.jackrabbit.oak.api.PropertyState;
 import org.apache.jackrabbit.oak.api.Type;
 import org.apache.jackrabbit.oak.composite.MountedNodeStore;
 import org.apache.jackrabbit.oak.composite.checks.UniqueIndexNodeStoreChecker.Context;
-import org.apache.jackrabbit.oak.plugins.index.CompositeIndexEditorProvider;
-import org.apache.jackrabbit.oak.plugins.index.IndexEditorProvider;
 import org.apache.jackrabbit.oak.plugins.index.IndexUpdateProvider;
 import org.apache.jackrabbit.oak.plugins.index.property.PropertyIndexEditorProvider;
 import org.apache.jackrabbit.oak.plugins.memory.MemoryNodeStore;
@@ -107,20 +99,16 @@ public class UniqueIndexNodeStoreCheckerTest {
         
     }
 
-    private void populateStore(NodeStore ns, BuilderAction action) throws CommitFailedException {
+    private void populateStore(NodeStore ns, Consumer<NodeBuilder> action) throws CommitFailedException {
         
         NodeBuilder builder = ns.getRoot().builder();
         NodeBuilder index = createIndexDefinition(builder.child(INDEX_DEFINITIONS_NAME), "foo",
                 true, true, ImmutableSet.of("foo"), null);
         index.setProperty("entryCount", -1);   
         
-        action.perform(builder);
+        action.accept(builder);
         
         ns.merge(builder,new EditorHook(new IndexUpdateProvider(
                 new PropertyIndexEditorProvider().with(mip))), CommitInfo.EMPTY);
-    }
-    
-    private interface BuilderAction {
-        public void perform(NodeBuilder b);
     }
 }
