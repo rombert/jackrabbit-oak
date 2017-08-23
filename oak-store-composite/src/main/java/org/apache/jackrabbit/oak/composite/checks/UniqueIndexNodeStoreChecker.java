@@ -20,6 +20,7 @@ import org.apache.jackrabbit.oak.plugins.index.property.Multiplexers;
 import org.apache.jackrabbit.oak.plugins.index.property.strategy.IndexStoreStrategy;
 import org.apache.jackrabbit.oak.spi.mount.Mount;
 import org.apache.jackrabbit.oak.spi.mount.MountInfoProvider;
+import org.apache.jackrabbit.oak.spi.mount.Mounts;
 import org.apache.jackrabbit.oak.spi.query.Filter;
 import org.apache.jackrabbit.oak.spi.state.ChildNodeEntry;
 import org.apache.jackrabbit.oak.spi.state.NodeState;
@@ -188,22 +189,31 @@ public class UniqueIndexNodeStoreChecker implements MountedNodeStoreChecker<Uniq
         
         private void check(Entry<Mount, NodeState> indexEntry, Entry<Mount, NodeState> indexEntry2, Context ctx, ErrorHolder errorHolder) {
 
-            Set<IndexStoreStrategy> strategies = Multiplexers.getStrategies(true, ctx.getMountInfoProvider(), indexEntry.getValue(), rootIndexDef.getName());
-            Set<IndexStoreStrategy> strategies2 = Multiplexers.getStrategies(true, ctx.getMountInfoProvider(), indexEntry2.getValue(), rootIndexDef.getName());
+            NodeState indexDefs = indexEntry.getValue();
+            NodeState indexDefs2 = indexEntry2.getValue();
+            
+            String indexName = rootIndexDef.getName();
+            
+            NodeState indexNode = indexDefs.getChildNode(indexName);
+            NodeState indexNode2 = indexDefs2.getChildNode(indexName);
+            
+            Set<IndexStoreStrategy> strategies = Multiplexers.getStrategies(true, indexEntry.getKey().isDefault() ? Mounts.defaultMountInfoProvider() : ctx.getMountInfoProvider(), indexNode, INDEX_CONTENT_NODE_NAME);
+            Set<IndexStoreStrategy> strategies2 = Multiplexers.getStrategies(true, indexEntry2.getKey().isDefault() ? Mounts.defaultMountInfoProvider() : ctx.getMountInfoProvider(), indexNode2, INDEX_CONTENT_NODE_NAME);
             
             LOG.info("Checking index {} from mount {}  ( {} strategies ) with the one from mount {} ( {} strategies )", 
-                    rootIndexDef.getName(),  indexEntry.getKey().getName(), strategies.size(), 
+                    indexName,  indexEntry.getKey().getName(), strategies.size(), 
                     indexEntry2.getKey().getName(), strategies2.size());
             
             for ( IndexStoreStrategy strategy : strategies ) {
-                // TODO - no index hits are returned here ... why? (talk to mueller)
-                for ( String indexHit : strategy.query(Filter.EMPTY_FILTER, rootIndexDef.getName(), indexEntry.getValue(), null) ) {
+                for ( String pathHit : strategy.query(Filter.EMPTY_FILTER, indexName, indexNode, null) ) {
+                    // TODO - this is a path hit, we need to get the property value and store it
+                    // TODO - will be very slow for large indexes, will need to write entries to file, sort and compare - see the DataStoreGarbageCollection implementation
                     for ( IndexStoreStrategy strategy2 : strategies2 ) {
-                        Iterable<String> result = strategy2.query(Filter.EMPTY_FILTER, rootIndexDef.getName(), indexEntry2.getValue(), Collections.singleton(indexHit));
+                        Iterable<String> result = strategy2.query(Filter.EMPTY_FILTER, indexName, indexNode2, Collections.singleton(pathHit));
                         if ( result.iterator().hasNext() ) {
                             // TODO - report both mounts
                             // TODO - proper MountedNodeStore entry
-                            errorHolder.report(new MountedNodeStore(indexEntry.getKey(), null), indexHit, "duplicate index entry");
+                            errorHolder.report(new MountedNodeStore(indexEntry.getKey(), null), pathHit, "duplicate index entry");
                         }
                     }
                 }
