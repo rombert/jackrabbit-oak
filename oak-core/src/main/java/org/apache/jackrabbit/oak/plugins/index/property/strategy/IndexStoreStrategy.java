@@ -65,6 +65,17 @@ public interface IndexStoreStrategy {
      */
     Iterable<String> query(Filter filter, String indexName, NodeState indexMeta, Iterable<String> values);
     
+    /**
+     * Search for a given set of values, returning <tt>IndexEntry</tt> results (optional operation)
+     * 
+     * @param filter the filter (can optionally be used for optimized query execution)
+     * @param indexName the name of the index (for logging)
+     * @param indexMeta the index metadata node (may not be null)
+     * @param values values to look for (null to check for property existence)
+     * @return an iterator of index entries
+     * 
+     * @throws UnsupportedOperationException if the operation is not supported
+     */
     Iterable<IndexEntry> queryEntries(Filter filter, String indexName, NodeState indexMeta, Iterable<String> values);
 
     /**
@@ -94,6 +105,10 @@ public interface IndexStoreStrategy {
 
     String getIndexNodeName();
     
+    /**
+     * An entry in the index
+     *
+     */
     public static final class IndexEntry {
         
         private final String path;

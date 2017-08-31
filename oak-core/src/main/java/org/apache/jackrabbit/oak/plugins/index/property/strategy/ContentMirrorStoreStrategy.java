@@ -170,7 +170,7 @@ public class ContentMirrorStoreStrategy implements IndexStoreStrategy {
     @Override
     public Iterable<IndexEntry> queryEntries(Filter filter, String indexName, NodeState indexMeta,
             Iterable<String> values) {
-        // TODO Auto-generated method stub
+        // we don't support it since there is no actual need at the moment. See OAK-6578 and OAK-6506
         throw new UnsupportedOperationException();
     }
 
