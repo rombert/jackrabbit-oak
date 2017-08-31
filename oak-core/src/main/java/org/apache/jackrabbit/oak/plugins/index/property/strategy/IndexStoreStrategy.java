@@ -65,7 +65,7 @@ public interface IndexStoreStrategy {
      */
     Iterable<String> query(Filter filter, String indexName, NodeState indexMeta, Iterable<String> values);
     
-    Iterable<IndexEntry> queryForEntries(Filter filter, String indexName, NodeState indexMeta, Iterable<String> values);
+    Iterable<IndexEntry> queryEntries(Filter filter, String indexName, NodeState indexMeta, Iterable<String> values);
 
     /**
      * Count the occurrence of a given set of values. Used in calculating the
@@ -111,6 +111,45 @@ public interface IndexStoreStrategy {
         
         public String getPropertyValue() {
             return propertyValue;
+        }
+
+        
+        
+        @Override
+        public int hashCode() {
+            final int prime = 31;
+            int result = 1;
+            result = prime * result + ((path == null) ? 0 : path.hashCode());
+            result = prime * result + ((propertyValue == null) ? 0 : propertyValue.hashCode());
+            return result;
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            if (this == obj)
+                return true;
+            if (obj == null)
+                return false;
+            if (getClass() != obj.getClass())
+                return false;
+            IndexEntry other = (IndexEntry) obj;
+            if (path == null) {
+                if (other.path != null)
+                    return false;
+            } else if (!path.equals(other.path))
+                return false;
+            if (propertyValue == null) {
+                if (other.propertyValue != null)
+                    return false;
+            } else if (!propertyValue.equals(other.propertyValue))
+                return false;
+            return true;
+        }
+
+        @Override
+        public String toString() {
+            
+            return getClass().getSimpleName() + "# path: " + path + ", propertyValue: " + propertyValue;
         }
     }
 

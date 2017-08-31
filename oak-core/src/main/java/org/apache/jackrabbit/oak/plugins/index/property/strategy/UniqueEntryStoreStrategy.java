@@ -163,7 +163,7 @@ public class UniqueEntryStoreStrategy implements IndexStoreStrategy {
 
     // TODO - remove duplication with queryForEntries
     @Override
-    public Iterable<IndexEntry> queryForEntries(Filter filter, String indexName, NodeState indexMeta,
+    public Iterable<IndexEntry> queryEntries(Filter filter, String indexName, NodeState indexMeta,
             Iterable<String> values) {
         final NodeState index = indexMeta.getChildNode(getIndexNodeName());
         return new Iterable<IndexEntry>() {

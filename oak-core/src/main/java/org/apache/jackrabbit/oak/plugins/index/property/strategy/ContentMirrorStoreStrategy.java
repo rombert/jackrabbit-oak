@@ -168,7 +168,7 @@ public class ContentMirrorStoreStrategy implements IndexStoreStrategy {
     }
     
     @Override
-    public Iterable<IndexEntry> queryForEntries(Filter filter, String indexName, NodeState indexMeta,
+    public Iterable<IndexEntry> queryEntries(Filter filter, String indexName, NodeState indexMeta,
             Iterable<String> values) {
         // TODO Auto-generated method stub
         throw new UnsupportedOperationException();

@@ -78,9 +78,9 @@ public class FilteringIndexStoreStrategy implements IndexStoreStrategy {
     }
 
     @Override
-    public Iterable<IndexEntry> queryForEntries(Filter filter, String indexName, NodeState indexMeta,
+    public Iterable<IndexEntry> queryEntries(Filter filter, String indexName, NodeState indexMeta,
             Iterable<String> values) {
-        return strategy.queryForEntries(filter, indexName, indexMeta, values);
+        return strategy.queryEntries(filter, indexName, indexMeta, values);
     }
 
     @Override
