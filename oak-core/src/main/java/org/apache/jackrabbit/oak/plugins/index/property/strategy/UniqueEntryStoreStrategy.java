@@ -119,73 +119,50 @@ public class UniqueEntryStoreStrategy implements IndexStoreStrategy {
     @Override
     public Iterable<String> query(final Filter filter, final String indexName, 
             final NodeState indexMeta, final Iterable<String> values) {
-        final NodeState index = indexMeta.getChildNode(getIndexNodeName());
-        return new Iterable<String>() {
+        return query0(filter, indexName, indexMeta, values, new HitProducer<String>() {
             @Override
-            public Iterator<String> iterator() {
-                if (values == null) {
-                    return new Iterator<String>() {
-                        
-                        Iterator<? extends ChildNodeEntry> it = index.getChildNodeEntries().iterator();
-
-                        @Override
-                        public boolean hasNext() {
-                            return it.hasNext();
-                        }
-
-                        @Override
-                        public String next() {
-                            PropertyState s = it.next().getNodeState().getProperty("entry");
-                            return s.getValue(Type.STRING, 0);
-                        }
-
-                        @Override
-                        public void remove() {
-                            it.remove();
-                        }
-                        
-                    };
-                }
-                ArrayList<String> list = new ArrayList<String>();
-                for (String p : values) {
-                    NodeState key = index.getChildNode(p);
-                    if (key.exists()) {
-                        // we have an entry for this value, so use it
-                        PropertyState s = key.getProperty("entry");
-                        String v = s.getValue(Type.STRING, 0);
-                        list.add(v);
-                    }
-                }
-                return list.iterator();
+            public String produce(NodeState indexHit, String pathName) {
+                PropertyState s = indexHit.getProperty("entry");
+                return s.getValue(Type.STRING, 0);
             }
-        };
+        });        
     }
 
-    // TODO - remove duplication with queryForEntries
     @Override
     public Iterable<IndexEntry> queryEntries(Filter filter, String indexName, NodeState indexMeta,
             Iterable<String> values) {
-        final NodeState index = indexMeta.getChildNode(getIndexNodeName());
-        return new Iterable<IndexEntry>() {
+        return query0(filter, indexName, indexMeta, values, new HitProducer<IndexEntry>() {
             @Override
-            public Iterator<IndexEntry> iterator() {
+            public IndexEntry produce(NodeState indexHit, String pathName) {
+                PropertyState s = indexHit.getProperty("entry");
+                return new IndexEntry(s.getValue(Type.STRING, 0), pathName);
+            }
+        });
+    }
+
+    private <T> Iterable<T> query0(Filter filter, String indexName, NodeState indexMeta,
+            Iterable<String> values, HitProducer<T> prod) {
+        final NodeState index = indexMeta.getChildNode(getIndexNodeName());
+        return new Iterable<T>() {
+            @Override
+            public Iterator<T> iterator() {
                 if (values == null) {
-                    return new Iterator<IndexEntry>() {
+                    return new Iterator<T>() {
                         
                         Iterator<? extends ChildNodeEntry> it = index.getChildNodeEntries().iterator();
-
+                        
                         @Override
                         public boolean hasNext() {
                             return it.hasNext();
                         }
-
+                        
                         @Override
-                        public IndexEntry next() {
+                        public T next() {
                             ChildNodeEntry indexEntry = it.next();
-                            PropertyState s = indexEntry.getNodeState().getProperty("entry");
-                            return new IndexEntry(s.getValue(Type.STRING, 0), indexEntry.getName());
+                            
+                            return prod.produce(indexEntry.getNodeState(), indexEntry.getName());
                         }
-
+                        
                         @Override
                         public void remove() {
                             it.remove();
@@ -193,21 +170,19 @@ public class UniqueEntryStoreStrategy implements IndexStoreStrategy {
                         
                     };
                 }
-                ArrayList<IndexEntry> list = new ArrayList<>();
+                ArrayList<T> list = new ArrayList<>();
                 for (String p : values) {
                     NodeState key = index.getChildNode(p);
                     if (key.exists()) {
                         // we have an entry for this value, so use it
-                        PropertyState s = key.getProperty("entry");
-                        String v = s.getValue(Type.STRING, 0);
-                        list.add(new IndexEntry(v, p));
+                        list.add(prod.produce(key, p));
                     }
                 }
                 return list.iterator();
             }
         };
     }
-
+    
     @Override
     public boolean exists(Supplier<NodeBuilder> index, String key) {
         return index.get().hasChildNode(key);
@@ -256,4 +231,16 @@ public class UniqueEntryStoreStrategy implements IndexStoreStrategy {
     public String getIndexNodeName() {
         return indexName;
     }
+
+    /**
+     * Creates a specific type of "hit" to return from the query methods
+     * 
+     * <p>Use primarily to reduce duplication when the query algorithms execute mostly the same steps but return different objects.</p>
+     * 
+     * @param <T> The type of Hit to produce
+     */
+    private interface HitProducer<T> {
+        T produce(NodeState indexHit, String pathName);
+    }
+    
 }
