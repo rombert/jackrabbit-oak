@@ -55,20 +55,20 @@ public class UniqueIndexNodeStoreCheckerTest {
     
     @Before
     public void prepare() {
-        mip = Mounts.newBuilder().readOnlyMount("libs", "/libs", "/apps").build();
+        mip = Mounts.newBuilder().
+                readOnlyMount("libs", "/libs").
+                readOnlyMount("apps", "/apps").
+                build();
     }
     
     @Test
-    public void uuidConflict() throws CommitFailedException {
+    public void uuidConflict_twoStores() throws Exception {
         
         MemoryNodeStore globalStore = new MemoryNodeStore();
         MemoryNodeStore mountedStore = new MemoryNodeStore();
         
         populateStore(globalStore, b  -> b.child("first").setProperty("foo", "bar"));
         populateStore(mountedStore, b -> b.child("libs").child("first").setProperty("foo", "bar"));
-        
-        dump(globalStore.getRoot());
-        dump(mountedStore.getRoot());
         
         UniqueIndexNodeStoreChecker checker = new UniqueIndexNodeStoreChecker();
         Context ctx = checker.createContext(globalStore, mip);
@@ -82,13 +82,70 @@ public class UniqueIndexNodeStoreCheckerTest {
         error.end();
     }
     
-    private void dump(NodeState root) {
+    @Test
+    public void uuidConflict_threeStores() throws Exception {
+        
+        MemoryNodeStore globalStore = new MemoryNodeStore();
+        MemoryNodeStore mountedStore = new MemoryNodeStore();
+        MemoryNodeStore mountedStore2 = new MemoryNodeStore();
+        
+        populateStore(globalStore, b  -> b.child("first").setProperty("foo", "bar"));
+        populateStore(globalStore, b  -> b.child("second").setProperty("foo", "baz"));
+        populateStore(mountedStore, b -> b.child("libs").child("first").setProperty("foo", "bar"));
+        populateStore(mountedStore2, b -> b.child("apps").child("first").setProperty("foo", "baz"));
+        
+        UniqueIndexNodeStoreChecker checker = new UniqueIndexNodeStoreChecker();
+        Context ctx = checker.createContext(globalStore, mip);
+        
+        exception.expect(IllegalRepositoryStateException.class);
+        exception.expectMessage("2 errors were found");
+        exception.expectMessage("clash for value bar: 'duplicate unique index entry'");
+        exception.expectMessage("clash for value baz: 'duplicate unique index entry'");
+        
+        ErrorHolder error = new ErrorHolder();
+        checker.check(new MountedNodeStore(mip.getMountByName("libs"), mountedStore), TreeFactory.createReadOnlyTree(mountedStore.getRoot()), error, ctx);
+        checker.check(new MountedNodeStore(mip.getMountByName("apps"), mountedStore2), TreeFactory.createReadOnlyTree(mountedStore.getRoot()), error, ctx);
+        error.end();
+    }
+    
+    @Test
+    public void noConflict() throws Exception {
+
+        MemoryNodeStore globalStore = new MemoryNodeStore();
+        MemoryNodeStore mountedStore = new MemoryNodeStore();
+        
+        populateStore(globalStore, b  -> b.child("first").setProperty("foo", "baz"));
+        populateStore(mountedStore, b -> b.child("libs").child("first").setProperty("foo", "bar"));
+        
+        UniqueIndexNodeStoreChecker checker = new UniqueIndexNodeStoreChecker();
+        Context ctx = checker.createContext(globalStore, mip);
+        
+        ErrorHolder error = new ErrorHolder();
+        checker.check(new MountedNodeStore(mip.getMountByName("libs"), mountedStore), TreeFactory.createReadOnlyTree(mountedStore.getRoot()), error, ctx);
+        error.end();
+
+    }
+    
+    private void populateStore(NodeStore ns, Consumer<NodeBuilder> action) throws CommitFailedException {
+        
+        NodeBuilder builder = ns.getRoot().builder();
+        NodeBuilder index = createIndexDefinition(builder.child(INDEX_DEFINITIONS_NAME), "foo",
+                true, true, ImmutableSet.of("foo"), null);
+        index.setProperty("entryCount", -1);   
+        
+        action.accept(builder);
+        
+        ns.merge(builder,new EditorHook(new IndexUpdateProvider(
+                new PropertyIndexEditorProvider().with(mip))), CommitInfo.EMPTY);
+    }
+    
+    static void dump(NodeState root) {
         System.out.println("--------");
         dump0(root, 0);
         System.out.println("--------");
     }
 
-    private void dump0(NodeState node, int indent) {
+    private static void dump0(NodeState node, int indent) {
         for ( PropertyState prop: node.getProperties() ) {
             for (int i = 0 ; i < indent; i++ ) 
                 System.out.print(' ');
@@ -105,19 +162,5 @@ public class UniqueIndexNodeStoreCheckerTest {
             
             dump0(child.getNodeState(), indent + 2);
         }
-        
-    }
-
-    private void populateStore(NodeStore ns, Consumer<NodeBuilder> action) throws CommitFailedException {
-        
-        NodeBuilder builder = ns.getRoot().builder();
-        NodeBuilder index = createIndexDefinition(builder.child(INDEX_DEFINITIONS_NAME), "foo",
-                true, true, ImmutableSet.of("foo"), null);
-        index.setProperty("entryCount", -1);   
-        
-        action.accept(builder);
-        
-        ns.merge(builder,new EditorHook(new IndexUpdateProvider(
-                new PropertyIndexEditorProvider().with(mip))), CommitInfo.EMPTY);
-    }
+    }    
 }
