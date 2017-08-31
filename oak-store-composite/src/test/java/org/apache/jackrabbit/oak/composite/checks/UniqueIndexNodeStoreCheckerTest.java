@@ -40,11 +40,16 @@ import org.apache.jackrabbit.oak.spi.state.NodeBuilder;
 import org.apache.jackrabbit.oak.spi.state.NodeState;
 import org.apache.jackrabbit.oak.spi.state.NodeStore;
 import org.junit.Before;
+import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.ExpectedException;
 
 import com.google.common.collect.ImmutableSet;
 
 public class UniqueIndexNodeStoreCheckerTest {
+
+    @Rule
+    public final ExpectedException exception = ExpectedException.none();
     
     private MountInfoProvider mip;
     
@@ -53,7 +58,7 @@ public class UniqueIndexNodeStoreCheckerTest {
         mip = Mounts.newBuilder().readOnlyMount("libs", "/libs", "/apps").build();
     }
     
-    @Test(expected = IllegalRepositoryStateException.class)
+    @Test
     public void uuidConflict() throws CommitFailedException {
         
         MemoryNodeStore globalStore = new MemoryNodeStore();
@@ -67,6 +72,10 @@ public class UniqueIndexNodeStoreCheckerTest {
         
         UniqueIndexNodeStoreChecker checker = new UniqueIndexNodeStoreChecker();
         Context ctx = checker.createContext(globalStore, mip);
+        
+        exception.expect(IllegalRepositoryStateException.class);
+        exception.expectMessage("1 errors were found");
+        exception.expectMessage("clash for value bar: 'duplicate unique index entry'");
         
         ErrorHolder error = new ErrorHolder();
         checker.check(new MountedNodeStore(mip.getMountByName("libs"), mountedStore), TreeFactory.createReadOnlyTree(mountedStore.getRoot()), error, ctx);

@@ -7,6 +7,7 @@ import static org.apache.jackrabbit.oak.plugins.index.IndexConstants.UNIQUE_PROP
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -18,6 +19,7 @@ import org.apache.jackrabbit.oak.api.Tree;
 import org.apache.jackrabbit.oak.composite.MountedNodeStore;
 import org.apache.jackrabbit.oak.plugins.index.property.Multiplexers;
 import org.apache.jackrabbit.oak.plugins.index.property.strategy.IndexStoreStrategy;
+import org.apache.jackrabbit.oak.plugins.index.property.strategy.IndexStoreStrategy.IndexEntry;
 import org.apache.jackrabbit.oak.spi.mount.Mount;
 import org.apache.jackrabbit.oak.spi.mount.MountInfoProvider;
 import org.apache.jackrabbit.oak.spi.mount.Mounts;
@@ -126,6 +128,7 @@ public class UniqueIndexNodeStoreChecker implements MountedNodeStoreChecker<Uniq
         private final ChildNodeEntry rootIndexDef;
         private final Map<Mount, NodeState> indexEntries = Maps.newHashMap();
         private final List<Mount[]> checked = new ArrayList<>();
+        private final Set<String> reportedConflictingValues = new HashSet<>();
         
         IndexCombination(ChildNodeEntry rootIndexDef) {
             this.rootIndexDef = rootIndexDef;
@@ -188,7 +191,7 @@ public class UniqueIndexNodeStoreChecker implements MountedNodeStoreChecker<Uniq
         }
         
         private void check(Entry<Mount, NodeState> indexEntry, Entry<Mount, NodeState> indexEntry2, Context ctx, ErrorHolder errorHolder) {
-
+            
             NodeState indexDefs = indexEntry.getValue();
             NodeState indexDefs2 = indexEntry2.getValue();
             
@@ -205,15 +208,16 @@ public class UniqueIndexNodeStoreChecker implements MountedNodeStoreChecker<Uniq
                     indexEntry2.getKey().getName(), strategies2.size());
             
             for ( IndexStoreStrategy strategy : strategies ) {
-                for ( String pathHit : strategy.query(Filter.EMPTY_FILTER, indexName, indexNode, null) ) {
-                    // TODO - this is a path hit, we need to get the property value and store it
+                for ( IndexEntry hit : strategy.queryEntries(Filter.EMPTY_FILTER, indexName, indexNode, null) ) {
                     // TODO - will be very slow for large indexes, will need to write entries to file, sort and compare - see the DataStoreGarbageCollection implementation
                     for ( IndexStoreStrategy strategy2 : strategies2 ) {
-                        Iterable<String> result = strategy2.query(Filter.EMPTY_FILTER, indexName, indexNode2, Collections.singleton(pathHit));
+                        Iterable<IndexEntry> result = strategy2.queryEntries(Filter.EMPTY_FILTER, indexName, indexNode2, Collections.singleton(hit.getPropertyValue()));
                         if ( result.iterator().hasNext() ) {
-                            // TODO - report both mounts
-                            // TODO - proper MountedNodeStore entry
-                            errorHolder.report(new MountedNodeStore(indexEntry.getKey(), null), pathHit, "duplicate index entry");
+                            // TODO - proper MountedNodeStore entries
+                            if ( reportedConflictingValues.add(hit.getPropertyValue())) {
+                                errorHolder.report(new MountedNodeStore(indexEntry.getKey(), null), hit.getPath(),
+                                        new MountedNodeStore(indexEntry2.getKey(), null), result.iterator().next().getPath(), hit.getPropertyValue(), "duplicate unique index entry");
+                            }
                         }
                     }
                 }
