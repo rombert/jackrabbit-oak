@@ -148,7 +148,7 @@ public class ContentMirrorStoreStrategy implements IndexStoreStrategy {
         return new Iterable<String>() {
             @Override
             public Iterator<String> iterator() {
-                PathIterator it = new PathIterator(filter, indexName, "");
+                HitIterator it = new HitIterator(filter, indexName, "");
                 if (values == null) {
                     it.setPathContainsValue(true);
                     it.enqueue(getChildNodeEntries(index).iterator());
@@ -162,7 +162,17 @@ public class ContentMirrorStoreStrategy implements IndexStoreStrategy {
                         }
                     }
                 }
-                return it;
+                return new Iterator<String>() {
+                    @Override
+                    public boolean hasNext() {
+                        return it.hasNext();
+                    }
+
+                    @Override
+                    public String next() {
+                        return it.next().getPath();
+                    }
+                };
             }
         };
     }
@@ -170,8 +180,27 @@ public class ContentMirrorStoreStrategy implements IndexStoreStrategy {
     @Override
     public Iterable<IndexEntry> queryEntries(Filter filter, String indexName, NodeState indexMeta,
             Iterable<String> values) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException();
+        final NodeState index = indexMeta.getChildNode(this.indexName);
+        return new Iterable<IndexEntry>() {
+            @Override
+            public Iterator<IndexEntry> iterator() {
+                HitIterator it = new HitIterator(filter, indexName, "");
+                if (values == null) {
+                    it.setPathContainsValue(true);
+                    it.enqueue(getChildNodeEntries(index).iterator());
+                } else {
+                    for (String p : values) {
+                        NodeState property = index.getChildNode(p);
+                        if (property.exists()) {
+                            // we have an entry for this value, so use it
+                            it.enqueue(Iterators.singletonIterator(
+                                    new MemoryChildNodeEntry(p, property)));
+                        }
+                    }
+                }
+                return it;
+            }
+        };
     }
 
     @Nonnull
@@ -320,9 +349,9 @@ public class ContentMirrorStoreStrategy implements IndexStoreStrategy {
     }
 
     /**
-     * An iterator over paths within an index node.
+     * An iterator over hits within an index node.
      */
-    static class PathIterator implements Iterator<String> {
+    static class HitIterator implements Iterator<IndexEntry> {
         
         private final Filter filter;
         private final String indexName;
@@ -343,8 +372,9 @@ public class ContentMirrorStoreStrategy implements IndexStoreStrategy {
          */
         private final Set<String> knownPaths = Sets.newHashSet();
         private final QueryLimits settings;
+        private String indexValue;
 
-        PathIterator(Filter filter, String indexName, String pathPrefix) {
+        HitIterator(Filter filter, String indexName, String pathPrefix) {
             this.filter = filter;
             this.pathPrefix = pathPrefix;
             this.indexName = indexName;
@@ -403,12 +433,18 @@ public class ContentMirrorStoreStrategy implements IndexStoreStrategy {
         }
 
         private void fetchNextPossiblyDuplicate() {
+            boolean first = true;
             while (!nodeIterators.isEmpty()) {
                 Iterator<? extends ChildNodeEntry> iterator = nodeIterators.getLast();
+                
                 if (iterator.hasNext()) {
                     ChildNodeEntry entry = iterator.next();
 
                     NodeState node = entry.getNodeState();
+                    if ( first ) {
+                        indexValue = entry.getName();
+                        first = false;
+                    }
 
                     String name = entry.getName();
                     if (NodeStateUtils.isHidden(name)) {
@@ -459,7 +495,7 @@ public class ContentMirrorStoreStrategy implements IndexStoreStrategy {
         }
 
         @Override
-        public String next() {
+        public IndexEntry next() {
             if (closed) {
                 throw new IllegalStateException("This iterator is closed");
             }
@@ -467,9 +503,17 @@ public class ContentMirrorStoreStrategy implements IndexStoreStrategy {
                 fetchNext();
                 init = true;
             }
-            String result = PathUtils.concat(pathPrefix, currentPath);
+            String fullPath = PathUtils.concat(pathPrefix, currentPath);
+            if ( !pathContainsValue && indexValue.length() > 0 ) {
+                if ( fullPath.equals(indexValue )) {
+                    fullPath = "";
+                } else {
+                    fullPath = fullPath.substring(indexValue.length() + 1);
+                }
+            }
+            IndexEntry hit = new IndexEntry(fullPath, indexValue);
             fetchNext();
-            return result;
+            return hit;
         }
 
         @Override

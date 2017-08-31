@@ -45,16 +45,19 @@ public class IndexStoreStrategySharedTest {
     private String indexName;
     private NodeBuilder indexMeta;
     private IndexStoreStrategy store;
+    private boolean storesAbsolutePath;
     
     @Parameterized.Parameters(name="{0}")
     public static Collection<Object[]> fixtures() {
         return Arrays.asList(new Object[][] {
-                new Object[] { new UniqueEntryStoreStrategy() }
+                new Object[] { new UniqueEntryStoreStrategy(), true },
+                new Object[] { new ContentMirrorStoreStrategy(), false }
         });
     }
     
-    public IndexStoreStrategySharedTest(IndexStoreStrategy store) {
+    public IndexStoreStrategySharedTest(IndexStoreStrategy store, boolean storesAbsolutePath) {
         this.store = store;
+        this.storesAbsolutePath = storesAbsolutePath;
     }
     
     @Before
@@ -73,7 +76,7 @@ public class IndexStoreStrategySharedTest {
         
         Iterable<IndexEntry> hits = store.queryEntries(FilterImpl.newTestInstance(), indexName, indexMeta.getNodeState(), null);
         
-        assertThat(hits, containsInAnyOrder(new IndexEntry("/some/node1", "key1"), new IndexEntry("/some/node2", "key2")));
+        assertThat(hits, containsInAnyOrder(new IndexEntry(storesAbsolutePath ? "/some/node1" : "some/node1", "key1"), new IndexEntry(storesAbsolutePath ? "/some/node2" : "some/node2", "key2")));
     }
     
     @Test
@@ -81,6 +84,6 @@ public class IndexStoreStrategySharedTest {
 
         Iterable<IndexEntry> hits = store.queryEntries(FilterImpl.newTestInstance(), indexName, indexMeta.getNodeState(), Arrays.asList("key1"));
         
-        assertThat(hits, containsInAnyOrder(new IndexEntry("/some/node1", "key1")));
+        assertThat(hits, containsInAnyOrder(new IndexEntry(storesAbsolutePath ? "/some/node1" : "some/node1", "key1")));
     }
 }
