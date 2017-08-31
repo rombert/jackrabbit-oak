@@ -49,6 +49,7 @@ public class UniqueIndexNodeStoreChecker implements MountedNodeStoreChecker<Uniq
             if ( indexDef.getNodeState().hasProperty(UNIQUE_PROPERTY_NAME) &&
                     indexDef.getNodeState().getBoolean(UNIQUE_PROPERTY_NAME) ) {
                 ctx.add(indexDef, mip.getDefaultMount(), indexDefs);
+                ctx.track(new MountedNodeStore(mip.getDefaultMount() , globalStore));
             }
         }
         
@@ -58,6 +59,7 @@ public class UniqueIndexNodeStoreChecker implements MountedNodeStoreChecker<Uniq
     @Override
     public boolean check(MountedNodeStore mountedStore, Tree tree, ErrorHolder errorHolder, Context context) {
 
+        context.track(mountedStore);
         
         // TODO - only access when tree path is /oak:index, return true for /, false for others
         LOG.info("Gathering index definitions for mount {}", mountedStore.getMount().getName());
@@ -91,9 +93,14 @@ public class UniqueIndexNodeStoreChecker implements MountedNodeStoreChecker<Uniq
     static class Context {
         private final MountInfoProvider mip;
         private final Map<String, IndexCombination> combinations = new HashMap<>();
+        private final Map<String, MountedNodeStore> mountedNodeStoresByName = Maps.newHashMap();
         
         Context(MountInfoProvider mip) {
             this.mip = mip;
+        }
+
+        public void track(MountedNodeStore mountedNodeStore) {
+            mountedNodeStoresByName.put(mountedNodeStore.getMount().getName(), mountedNodeStore);
         }
 
         public void add(ChildNodeEntry rootIndexDef, Mount mount, NodeState indexDef) {
@@ -136,12 +143,6 @@ public class UniqueIndexNodeStoreChecker implements MountedNodeStoreChecker<Uniq
         
         public void addEntry(Mount mount, NodeState indexDef) {
             
-            // TODO - this fails, probably when the same Mount is used for multiple paths ( e.g. /libs and /apps )
-            /*            
-            if ( indexEntries.containsKey(mount) ) {
-                throw new IllegalArgumentException("Index definition for " + rootIndexDef.getName() + " already contains information for mount " + describe(mount));
-            }
-            */
             if ( !indexEntries.containsKey(mount) )
                 indexEntries.put(mount, indexDef);
         }
@@ -175,9 +176,11 @@ public class UniqueIndexNodeStoreChecker implements MountedNodeStoreChecker<Uniq
         }
 
         private boolean wasChecked(Mount first, Mount second) {
-            
+
+            // TODO - better cross-check support - maybe just generate all combinations?
             for ( Mount[] checkedEntry : checked ) {
-                if ( checkedEntry[0].equals(first) && checkedEntry[1].equals(second) ) {
+                if ( ( checkedEntry[0].equals(first) && checkedEntry[1].equals(second) ) ||
+                        ( checkedEntry[1].equals(first) && checkedEntry[0].equals(second))) {
                     return true;
                 }
             }
@@ -191,6 +194,9 @@ public class UniqueIndexNodeStoreChecker implements MountedNodeStoreChecker<Uniq
         }
         
         private void check(Entry<Mount, NodeState> indexEntry, Entry<Mount, NodeState> indexEntry2, Context ctx, ErrorHolder errorHolder) {
+            
+            MountedNodeStore mountedNodeStore = ctx.mountedNodeStoresByName.get(indexEntry.getKey().getName());
+            MountedNodeStore mountedNodeStore2 = ctx.mountedNodeStoresByName.get(indexEntry2.getKey().getName());
             
             NodeState indexDefs = indexEntry.getValue();
             NodeState indexDefs2 = indexEntry2.getValue();
@@ -213,10 +219,9 @@ public class UniqueIndexNodeStoreChecker implements MountedNodeStoreChecker<Uniq
                     for ( IndexStoreStrategy strategy2 : strategies2 ) {
                         Iterable<IndexEntry> result = strategy2.queryEntries(Filter.EMPTY_FILTER, indexName, indexNode2, Collections.singleton(hit.getPropertyValue()));
                         if ( result.iterator().hasNext() ) {
-                            // TODO - proper MountedNodeStore entries
                             if ( reportedConflictingValues.add(hit.getPropertyValue())) {
-                                errorHolder.report(new MountedNodeStore(indexEntry.getKey(), null), hit.getPath(),
-                                        new MountedNodeStore(indexEntry2.getKey(), null), result.iterator().next().getPath(), hit.getPropertyValue(), "duplicate unique index entry");
+                                errorHolder.report(mountedNodeStore, hit.getPath(), mountedNodeStore2, result.iterator().next().getPath(), 
+                                        hit.getPropertyValue(), "duplicate unique index entry");
                             }
                         }
                     }
