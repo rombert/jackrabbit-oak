@@ -212,10 +212,10 @@ public class UniqueIndexNodeStoreChecker implements MountedNodeStoreChecker<Uniq
             LOG.info("Checking index {} from mount {}  ( {} strategies ) with the one from mount {} ( {} strategies )", 
                     indexName,  indexEntry.getKey().getName(), strategies.size(), 
                     indexEntry2.getKey().getName(), strategies2.size());
-            
+
+            // TODO - will be very slow for large indexes, will need to write entries to file, sort and compare - see the VersionGarbageCollector implementation - ExternalSort, StringSort
             for ( IndexStoreStrategy strategy : strategies ) {
                 for ( IndexEntry hit : strategy.queryEntries(Filter.EMPTY_FILTER, indexName, indexNode, null) ) {
-                    // TODO - will be very slow for large indexes, will need to write entries to file, sort and compare - see the DataStoreGarbageCollection implementation
                     for ( IndexStoreStrategy strategy2 : strategies2 ) {
                         Iterable<IndexEntry> result = strategy2.queryEntries(Filter.EMPTY_FILTER, indexName, indexNode2, Collections.singleton(hit.getPropertyValue()));
                         if ( result.iterator().hasNext() ) {
