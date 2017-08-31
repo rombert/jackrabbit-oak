@@ -23,8 +23,6 @@ import java.util.function.Consumer;
 
 import org.apache.jackrabbit.oak.api.CommitFailedException;
 import org.apache.jackrabbit.oak.api.IllegalRepositoryStateException;
-import org.apache.jackrabbit.oak.api.PropertyState;
-import org.apache.jackrabbit.oak.api.Type;
 import org.apache.jackrabbit.oak.composite.MountedNodeStore;
 import org.apache.jackrabbit.oak.composite.checks.UniqueIndexNodeStoreChecker.Context;
 import org.apache.jackrabbit.oak.plugins.index.IndexUpdateProvider;
@@ -35,9 +33,7 @@ import org.apache.jackrabbit.oak.spi.commit.CommitInfo;
 import org.apache.jackrabbit.oak.spi.commit.EditorHook;
 import org.apache.jackrabbit.oak.spi.mount.MountInfoProvider;
 import org.apache.jackrabbit.oak.spi.mount.Mounts;
-import org.apache.jackrabbit.oak.spi.state.ChildNodeEntry;
 import org.apache.jackrabbit.oak.spi.state.NodeBuilder;
-import org.apache.jackrabbit.oak.spi.state.NodeState;
 import org.apache.jackrabbit.oak.spi.state.NodeStore;
 import org.junit.Before;
 import org.junit.Rule;
@@ -56,8 +52,8 @@ public class UniqueIndexNodeStoreCheckerTest {
     @Before
     public void prepare() {
         mip = Mounts.newBuilder().
-                readOnlyMount("libs", "/libs").
-                readOnlyMount("apps", "/apps").
+                readOnlyMount("libs", "/libs", "/libs2").
+                readOnlyMount("apps", "/apps", "/apps2").
                 build();
     }
     
