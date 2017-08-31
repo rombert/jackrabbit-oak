@@ -231,5 +231,16 @@ public class UniqueEntryStoreStrategy implements IndexStoreStrategy {
     public String getIndexNodeName() {
         return indexName;
     }
+
+    /**
+     * Creates a specific type of "hit" to return from the query methods
+     * 
+     * <p>Use primarily to reduce duplication when the query algorithms execute mostly the same steps but return different objects.</p>
+     * 
+     * @param <T> The type of Hit to produce
+     */
+    private interface HitProducer<T> {
+        T produce(NodeState indexHit, String pathName);
+    }
     
 }
