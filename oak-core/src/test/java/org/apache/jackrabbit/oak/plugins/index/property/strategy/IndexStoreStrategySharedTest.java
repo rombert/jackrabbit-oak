@@ -24,6 +24,7 @@ import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.junit.Assert.assertThat;
 
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Set;
 
 import org.apache.jackrabbit.oak.plugins.index.property.strategy.IndexStoreStrategy.IndexEntry;
@@ -32,21 +33,34 @@ import org.apache.jackrabbit.oak.spi.state.NodeBuilder;
 import org.apache.jackrabbit.oak.spi.state.NodeState;
 import org.junit.Before;
 import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.junit.runners.Parameterized;
 
 import com.google.common.base.Supplier;
 
-public class UniqueEntryStrategyTest {
+@RunWith(Parameterized.class)
+public class IndexStoreStrategySharedTest {
     
     private static final Set<String> EMPTY = newHashSet();
     private String indexName;
     private NodeBuilder indexMeta;
-    private UniqueEntryStoreStrategy store;
+    private IndexStoreStrategy store;
+    
+    @Parameterized.Parameters(name="{0}")
+    public static Collection<Object[]> fixtures() {
+        return Arrays.asList(new Object[][] {
+                new Object[] { new UniqueEntryStoreStrategy() }
+        });
+    }
+    
+    public IndexStoreStrategySharedTest(IndexStoreStrategy store) {
+        this.store = store;
+    }
     
     @Before
     public void fillIndex() throws Exception {
         indexName = "foo";
         
-        store = new UniqueEntryStoreStrategy();
         NodeState root = EMPTY_NODE;
         indexMeta = root.builder();
         Supplier<NodeBuilder> index = memoize(() -> indexMeta.child(INDEX_CONTENT_NODE_NAME));
