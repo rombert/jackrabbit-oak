@@ -64,6 +64,8 @@ public interface IndexStoreStrategy {
      * @return an iterator of paths
      */
     Iterable<String> query(Filter filter, String indexName, NodeState indexMeta, Iterable<String> values);
+    
+    Iterable<IndexEntry> queryForEntries(Filter filter, String indexName, NodeState indexMeta, Iterable<String> values);
 
     /**
      * Count the occurrence of a given set of values. Used in calculating the
@@ -91,5 +93,25 @@ public interface IndexStoreStrategy {
     long count(Filter filter, NodeState root, NodeState indexMeta, Set<String> values, int max);
 
     String getIndexNodeName();
+    
+    public static final class IndexEntry {
+        
+        private final String path;
+        private final String propertyValue;
+        
+        IndexEntry(String path, String propertyValue) {
+            this.path = path;
+            this.propertyValue = propertyValue;
+            
+        }
+        
+        public String getPath() {
+            return path;
+        }
+        
+        public String getPropertyValue() {
+            return propertyValue;
+        }
+    }
 
 }

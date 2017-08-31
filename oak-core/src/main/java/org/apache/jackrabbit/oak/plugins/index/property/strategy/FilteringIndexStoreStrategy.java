@@ -78,6 +78,12 @@ public class FilteringIndexStoreStrategy implements IndexStoreStrategy {
     }
 
     @Override
+    public Iterable<IndexEntry> queryForEntries(Filter filter, String indexName, NodeState indexMeta,
+            Iterable<String> values) {
+        return strategy.queryForEntries(filter, indexName, indexMeta, values);
+    }
+
+    @Override
     public long count(NodeState root, NodeState indexMeta, Set<String> values,
             int max) {
         return strategy.count(root, indexMeta, values, max);

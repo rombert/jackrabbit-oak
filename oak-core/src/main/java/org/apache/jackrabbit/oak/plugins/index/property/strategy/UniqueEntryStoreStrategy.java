@@ -161,6 +161,53 @@ public class UniqueEntryStoreStrategy implements IndexStoreStrategy {
         };
     }
 
+    // TODO - remove duplication with queryForEntries
+    @Override
+    public Iterable<IndexEntry> queryForEntries(Filter filter, String indexName, NodeState indexMeta,
+            Iterable<String> values) {
+        final NodeState index = indexMeta.getChildNode(getIndexNodeName());
+        return new Iterable<IndexEntry>() {
+            @Override
+            public Iterator<IndexEntry> iterator() {
+                if (values == null) {
+                    return new Iterator<IndexEntry>() {
+                        
+                        Iterator<? extends ChildNodeEntry> it = index.getChildNodeEntries().iterator();
+
+                        @Override
+                        public boolean hasNext() {
+                            return it.hasNext();
+                        }
+
+                        @Override
+                        public IndexEntry next() {
+                            ChildNodeEntry indexEntry = it.next();
+                            PropertyState s = indexEntry.getNodeState().getProperty("entry");
+                            return new IndexEntry(s.getValue(Type.STRING, 0), indexEntry.getName());
+                        }
+
+                        @Override
+                        public void remove() {
+                            it.remove();
+                        }
+                        
+                    };
+                }
+                ArrayList<IndexEntry> list = new ArrayList<>();
+                for (String p : values) {
+                    NodeState key = index.getChildNode(p);
+                    if (key.exists()) {
+                        // we have an entry for this value, so use it
+                        PropertyState s = key.getProperty("entry");
+                        String v = s.getValue(Type.STRING, 0);
+                        list.add(new IndexEntry(v, p));
+                    }
+                }
+                return list.iterator();
+            }
+        };
+    }
+
     @Override
     public boolean exists(Supplier<NodeBuilder> index, String key) {
         return index.get().hasChildNode(key);
