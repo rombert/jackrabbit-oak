@@ -138,29 +138,4 @@ public class UniqueIndexNodeStoreCheckerTest {
         ns.merge(builder,new EditorHook(new IndexUpdateProvider(
                 new PropertyIndexEditorProvider().with(mip))), CommitInfo.EMPTY);
     }
-    
-    static void dump(NodeState root) {
-        System.out.println("--------");
-        dump0(root, 0);
-        System.out.println("--------");
-    }
-
-    private static void dump0(NodeState node, int indent) {
-        for ( PropertyState prop: node.getProperties() ) {
-            for (int i = 0 ; i < indent; i++ ) 
-                System.out.print(' ');
-            
-            String val = prop.isArray() ? prop.getValue(Type.STRINGS).toString() : prop.getValue(Type.STRING);
-            
-            System.out.format("+ %s: %s%n", prop.getName(), val);
-        }
-        
-        for ( ChildNodeEntry child : node.getChildNodeEntries() ) {
-            for (int i = 0 ; i < indent; i++ ) 
-                System.out.print(' ');
-            System.out.format("- %s%n", child.getName());
-            
-            dump0(child.getNodeState(), indent + 2);
-        }
-    }    
 }
