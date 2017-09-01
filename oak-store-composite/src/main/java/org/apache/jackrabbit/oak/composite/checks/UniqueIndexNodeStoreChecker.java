@@ -36,8 +36,6 @@ import com.google.common.collect.Maps;
 @Service(MountedNodeStoreChecker.class)
 public class UniqueIndexNodeStoreChecker implements MountedNodeStoreChecker<UniqueIndexNodeStoreChecker.Context> {
     
-    private static final Logger LOG = LoggerFactory.getLogger(UniqueIndexNodeStoreChecker.class);
-
     @Override
     public Context createContext(NodeStore globalStore, MountInfoProvider mip) {
 
@@ -62,12 +60,10 @@ public class UniqueIndexNodeStoreChecker implements MountedNodeStoreChecker<Uniq
         context.track(mountedStore);
         
         // TODO - only access when tree path is /oak:index, return true for /, false for others
-        LOG.info("Gathering index definitions for mount {}", mountedStore.getMount().getName());
         
         // gather index definitions owned by this mount
         NodeState indexDefs = mountedStore.getNodeStore().getRoot().getChildNode(INDEX_DEFINITIONS_NAME);
         
-        // TODO - for mounts only consider definitions under the specific path - :oak:mount-libs-index
         for ( ChildNodeEntry indexDef : indexDefs.getChildNodeEntries() ) {
             if ( indexDef.getNodeState().hasProperty(UNIQUE_PROPERTY_NAME) &&
                     indexDef.getNodeState().getBoolean(UNIQUE_PROPERTY_NAME) ) {
@@ -105,8 +101,6 @@ public class UniqueIndexNodeStoreChecker implements MountedNodeStoreChecker<Uniq
 
         public void add(ChildNodeEntry rootIndexDef, Mount mount, NodeState indexDef) {
 
-            LOG.info("Adding index definition at {} for mount {}", rootIndexDef.getName(), mount.getName());
-            
             IndexCombination combination = combinations.get(rootIndexDef.getName());
             if ( combination == null ) {
                 combination = new IndexCombination(rootIndexDef);
@@ -122,9 +116,6 @@ public class UniqueIndexNodeStoreChecker implements MountedNodeStoreChecker<Uniq
         }
         
         public void runChecks(Context context, ErrorHolder errorHolder) {
-            
-            LOG.info("Running checks");
-            
             for ( IndexCombination combination: combinations.values() ) {
                 combination.runCheck(context, errorHolder);
             }
@@ -149,27 +140,20 @@ public class UniqueIndexNodeStoreChecker implements MountedNodeStoreChecker<Uniq
         
         public void runCheck(Context context, ErrorHolder errorHolder) {
             
-            LOG.info("Running checks for combination with index name {} ; number of index entries: {}", rootIndexDef.getName(), indexEntries.size());
-            
             for ( Map.Entry<Mount, NodeState> indexEntry : indexEntries.entrySet() ) {
                 for ( Map.Entry<Mount, NodeState> indexEntry2 : indexEntries.entrySet() ) {
                     
-                    LOG.info("Considering entries for mount {} and {}", indexEntry.getKey().getName(), indexEntry2.getKey().getName());
-                    
                     // same entry, skip
                     if ( indexEntry.getKey().equals(indexEntry2.getKey()) ) {
-                        LOG.info("Same entry, skipping");
                         continue;
                     }
                     
                     if ( wasChecked(indexEntry.getKey(), indexEntry2.getKey() )) {
-                        LOG.info("Already checked, skipping");
                         continue;
                     }
                     
                     check(indexEntry, indexEntry2, context, errorHolder);
                     
-                    LOG.info("Recording check was performed");
                     recordChecked(indexEntry.getKey(), indexEntry2.getKey());
                 }
             }
@@ -208,19 +192,22 @@ public class UniqueIndexNodeStoreChecker implements MountedNodeStoreChecker<Uniq
             
             Set<IndexStoreStrategy> strategies = Multiplexers.getStrategies(true, indexEntry.getKey().isDefault() ? Mounts.defaultMountInfoProvider() : ctx.getMountInfoProvider(), indexNode, INDEX_CONTENT_NODE_NAME);
             Set<IndexStoreStrategy> strategies2 = Multiplexers.getStrategies(true, indexEntry2.getKey().isDefault() ? Mounts.defaultMountInfoProvider() : ctx.getMountInfoProvider(), indexNode2, INDEX_CONTENT_NODE_NAME);
-            
-            LOG.info("Checking index {} from mount {}  ( {} strategies ) with the one from mount {} ( {} strategies )", 
-                    indexName,  indexEntry.getKey().getName(), strategies.size(), 
-                    indexEntry2.getKey().getName(), strategies2.size());
 
             // TODO - will be very slow for large indexes, will need to write entries to file, sort and compare - see the VersionGarbageCollector implementation - ExternalSort, StringSort
             for ( IndexStoreStrategy strategy : strategies ) {
                 for ( IndexEntry hit : strategy.queryEntries(Filter.EMPTY_FILTER, indexName, indexNode, null) ) {
+                    if ( !indexEntry.getKey().isMounted(hit.getPath() )) {
+                        continue;
+                    }
                     for ( IndexStoreStrategy strategy2 : strategies2 ) {
                         Iterable<IndexEntry> result = strategy2.queryEntries(Filter.EMPTY_FILTER, indexName, indexNode2, Collections.singleton(hit.getPropertyValue()));
                         if ( result.iterator().hasNext() ) {
+                            IndexEntry hit2 = result.iterator().next();
+                            if ( !indexEntry2.getKey().isMounted(hit2.getPath())) {
+                                continue;
+                            }
                             if ( reportedConflictingValues.add(hit.getPropertyValue())) {
-                                errorHolder.report(mountedNodeStore, hit.getPath(), mountedNodeStore2, result.iterator().next().getPath(), 
+                                errorHolder.report(mountedNodeStore, hit.getPath(), mountedNodeStore2, hit2.getPath(), 
                                         hit.getPropertyValue(), "duplicate unique index entry");
                             }
                         }

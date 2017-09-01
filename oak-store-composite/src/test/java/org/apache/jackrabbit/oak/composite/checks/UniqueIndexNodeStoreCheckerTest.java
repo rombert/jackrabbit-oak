@@ -119,7 +119,47 @@ public class UniqueIndexNodeStoreCheckerTest {
         ErrorHolder error = new ErrorHolder();
         checker.check(new MountedNodeStore(mip.getMountByName("libs"), mountedStore), TreeFactory.createReadOnlyTree(mountedStore.getRoot()), error, ctx);
         error.end();
-
+    }
+    
+    /**
+     * Tests that if a mount has an index clash but the path does not belong to the mount no error is reported
+     */
+    @Test
+    public void noConflict_mountHasDuplicateOutsideOfPath() throws Exception {
+        
+        MemoryNodeStore globalStore = new MemoryNodeStore();
+        MemoryNodeStore mountedStore = new MemoryNodeStore();
+        
+        populateStore(globalStore, b  -> b.child("first").setProperty("foo", "bar"));
+        populateStore(mountedStore, b -> b.child("second").setProperty("foo", "bar"));
+        
+        UniqueIndexNodeStoreChecker checker = new UniqueIndexNodeStoreChecker();
+        Context ctx = checker.createContext(globalStore, mip);
+        
+        ErrorHolder error = new ErrorHolder();
+        checker.check(new MountedNodeStore(mip.getMountByName("libs"), mountedStore), TreeFactory.createReadOnlyTree(mountedStore.getRoot()), error, ctx);
+        error.end();
+    }
+    
+    /**
+     * Tests that if a mount has an index clash but the path does not belog to the global mount no error is reported  
+     * 
+     */
+    @Test
+    public void noConflict_globalMountHasDuplicateOutsideOfPath() throws Exception {
+        
+        MemoryNodeStore globalStore = new MemoryNodeStore();
+        MemoryNodeStore mountedStore = new MemoryNodeStore();
+        
+        populateStore(globalStore, b  -> b.child("libs").child("first").setProperty("foo", "bar"));
+        populateStore(mountedStore, b -> b.child("libs").child("second").setProperty("foo", "bar"));
+        
+        UniqueIndexNodeStoreChecker checker = new UniqueIndexNodeStoreChecker();
+        Context ctx = checker.createContext(globalStore, mip);
+        
+        ErrorHolder error = new ErrorHolder();
+        checker.check(new MountedNodeStore(mip.getMountByName("libs"), mountedStore), TreeFactory.createReadOnlyTree(mountedStore.getRoot()), error, ctx);
+        error.end();
     }
     
     private void populateStore(NodeStore ns, Consumer<NodeBuilder> action) throws CommitFailedException {
