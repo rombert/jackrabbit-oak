@@ -549,6 +549,8 @@ public class SecurityProviderRegistration {
 
         log.info("Trying to unregister the SecurityProvider...");
 
+        closeQuietly(closer);
+
         synchronized (this) {
 
             // If there is nothing to register, we obviously have nothing to do.
@@ -573,7 +575,6 @@ public class SecurityProviderRegistration {
         }
 
         registration.unregister();
-        closeQuietly(closer);
 
         log.info("SecurityProvider instance unregistered");
     }
