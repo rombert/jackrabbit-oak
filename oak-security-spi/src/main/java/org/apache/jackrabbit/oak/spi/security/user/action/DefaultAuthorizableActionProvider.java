@@ -27,6 +27,7 @@ import org.apache.jackrabbit.oak.spi.security.SecurityProvider;
 import org.jetbrains.annotations.NotNull;
 import org.osgi.service.component.annotations.Activate;
 import org.osgi.service.component.annotations.Component;
+import org.osgi.service.component.annotations.ConfigurationPolicy;
 import org.osgi.service.metatype.annotations.AttributeDefinition;
 import org.osgi.service.metatype.annotations.Designate;
 import org.osgi.service.metatype.annotations.ObjectClassDefinition;
@@ -40,7 +41,8 @@ import org.slf4j.LoggerFactory;
  */
 @Component(
         service = AuthorizableActionProvider.class,
-        property = OAK_SECURITY_NAME + "=org.apache.jackrabbit.oak.spi.security.user.action.DefaultAuthorizableActionProvider")
+        property = OAK_SECURITY_NAME + "=org.apache.jackrabbit.oak.spi.security.user.action.DefaultAuthorizableActionProvider",
+        configurationPolicy = ConfigurationPolicy.REQUIRE)
 @Designate(ocd = DefaultAuthorizableActionProvider.Configuration.class)
 public class DefaultAuthorizableActionProvider implements AuthorizableActionProvider {
 

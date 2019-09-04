@@ -52,6 +52,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.osgi.service.component.annotations.Activate;
 import org.osgi.service.component.annotations.Component;
+import org.osgi.service.component.annotations.ConfigurationPolicy;
 import org.osgi.service.component.annotations.Reference;
 import org.osgi.service.component.annotations.ReferenceCardinality;
 import org.osgi.service.metatype.annotations.AttributeDefinition;
@@ -64,7 +65,7 @@ import static org.apache.jackrabbit.oak.plugins.value.jcr.PartialValueFactory.DE
 /**
  * Default implementation of the {@link UserConfiguration}.
  */
-@Component(service = {UserConfiguration.class, SecurityConfiguration.class})
+@Component(service = {UserConfiguration.class, SecurityConfiguration.class}, configurationPolicy = ConfigurationPolicy.REQUIRE )
 @Designate(ocd = UserConfigurationImpl.Configuration.class)
 public class UserConfigurationImpl extends ConfigurationBase implements UserConfiguration, SecurityConfiguration {
 

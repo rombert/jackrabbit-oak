@@ -31,6 +31,7 @@ import org.apache.jackrabbit.oak.spi.whiteboard.WhiteboardAware;
 import org.jetbrains.annotations.NotNull;
 import org.osgi.service.component.annotations.Activate;
 import org.osgi.service.component.annotations.Component;
+import org.osgi.service.component.annotations.ConfigurationPolicy;
 import org.osgi.service.metatype.annotations.AttributeDefinition;
 import org.osgi.service.metatype.annotations.Designate;
 import org.osgi.service.metatype.annotations.ObjectClassDefinition;
@@ -49,7 +50,7 @@ import org.slf4j.LoggerFactory;
  * </ul>
  *
  */
-@Component(service = {AuthenticationConfiguration.class, SecurityConfiguration.class})
+@Component(service = {AuthenticationConfiguration.class, SecurityConfiguration.class}, configurationPolicy = ConfigurationPolicy.REQUIRE)
 @Designate(ocd = AuthenticationConfigurationImpl.Configuration.class)
 public class AuthenticationConfigurationImpl extends ConfigurationBase implements AuthenticationConfiguration, LoginModuleStatsCollector {
 
